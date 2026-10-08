@@ -1083,64 +1083,95 @@ const ACT = {
 };
 document.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; const f = ACT[b.dataset.a]; if (f) f(b.dataset, b); });
 
-/* ============================ runner sprites ============================ */
-// 14 px wide, facing right. H hair, S skin, s skin in shade, E eye, J singlet, j singlet in shade, P shorts, R shorts stripe, W sock, K shoe
-const BODY = [
-  '.....HHHH.....',
-  '....HHHHHH....',
-  '....HSSSSS....',
-  '....SSSSES....',
-  '....SSSSSS....',
-  '.....sSSS.....',
-  '.....JSSJ.....',
-  '..SSJJJJJJSS..',
-  '.SSSJJJJJJSSS.',
-  '.SS.JJJJJJ.SS.',
-  '.Ss.JJJJJJ.sS.',
-  '.Ss.jJJJJj.sS.',
-  '.Ss.jJJJJj.sS.',
-  '.SS.JJJJJJ.SS.',
-  '...PPPPPPPP...',
-  '...PPPPPPPP...',
-  '...PRPPPPRP...',
-  '...PRP..PRP...',
-];
-// running: the arms pump opposite the legs (two arm sets swapped onto rows 8-13)
-const ARMS = [
-  ['..SSJJJJJJSS..', '.SSSJJJJJJSS..', 'SS..JJJJJJ.SS.', 'S...JJJJJJ..SS', '....jJJJJj...S', '....jJJJJj....', '....JJJJJJ....'],
-  ['..SSJJJJJJSS..', '..SSJJJJJJSSS.', '.SS.JJJJJJ..SS', 'SS..JJJJJJ...S', 'S...jJJJJj....', '....jJJJJj....', '....JJJJJJ....'],
-];
-const LEGS = {
-  stand:['....SS..SS....', '....SS..SS....', '....ss..ss....', '....WW..WW....', '....WW..WW....', '....KKK.KKK...'],
-  run0: ['.....SSSS.....', '....SS..SS....', '....SS...SS...', '...ss....SS...', '...WW.....WW..', '..KK......KKK.'],
-  run1: ['.....SSSS.....', '.....SSSSS....', '......SS.SS...', '......ss.WW...', '......WW.KK...', '.....KKK......'],
-  run2: ['.....SSSS.....', '....SS..SS....', '...SS...SS....', '...SS....ss...', '..WW.....WW...', '.KKK......KK..'],
-  run3: ['.....SSSS.....', '....SSSSS.....', '...SS.SS......', '...WW.ss......', '...KK.WW......', '......KKK.....'],
+/* ============================ runner sprites ============================
+   Every runner is drawn from a little skeleton, side-on and facing right: hips, a leaning trunk, a head, two-part arms
+   and two-part legs. Running is an 8-frame sprint cycle (user): the knee drives up folded, the leg reaches, lands
+   under the body, pushes off behind and the heel kicks up; the arms pump opposite the legs; there are two moments per
+   cycle with both feet off the ground. Angles are in radians from straight down, positive toward the front. */
+const FW = 48, FH = 60, HX = 18, GROUND = 58, FIG = 1 / 3;            // sprite size in fine pixels, hip x, ground line; FIG: fine pixels to track pixels
+const LEAN = [-.1, 0, .14, .24, .42, .62];                            // trunk lean: easing down, upright, jog, sprint, driving, out of the blocks
+const RUN_A = [.12, .70, .94, .70, .12, -.46, -.70, -.46];            // thigh angle through the cycle
+const RUN_K = [1.7, 1.25, .85, .3, .1, .12, .35, 1.15];               // knee fold through the cycle
+const RUN_ARM = [0, -.67, -.95, -.67, 0, .67, .95, .67];              // upper arm (the near arm goes back as the near leg comes forward)
+const POSE = {
+  stand:{ th:0, legs:[[.05, 0], [-.05, 0]], arms:[[.06, .12], [-.06, .12]] },
+  ready:{ th:.3, legs:[[.5, .7], [-.35, .25]], arms:[[-.55, .4], [.5, 1.2]] },     // waiting for the baton, weight forward
+  marks:{ th:1.25, legs:[[1, 2], [.1, 1.75]], arms:[[0, 0], [.12, 0]] },           // on your marks: back knee down, hands on the line
+  set:{ th:1.75, legs:[[.75, 1.35], [.2, .95]], arms:[[0, 0], [.12, 0]] },         // set: hips up above the shoulders
 };
-function styleHair(rows, p){
-  rows = [...rows];
-  const style = p.style === 'headband' ? 'bald' : p.style, band = p.style === 'headband';
-  const put = (r, xs, ch) => { const a = [...rows[r]]; xs.forEach(x => { if (a[x] !== '.') a[x] = ch; }); rows[r] = a.join(''); };
-  let added = 0;
-  if (style === 'bald') { rows[0] = '.....SSSS.....'; rows[1] = '....SSSSSS....'; rows[2] = '....sSSSSS....'; }
-  if (style === 'fade') { rows[1] = '....sHHHHs....'; rows[2] = '....sSSSSS....'; }
-  if (style === 'afro') { rows[0] = '...HHHHHHHH...'; rows[1] = '...HHHHHHHH...'; rows[2] = '...HHSSSSSH...'; rows.splice(0, 0, '....HHHHHH....'); added = 1; }
-  if (style === 'curly') { rows[0] = '....HHHHHH....'; rows[2] = '....HSSSSH....'; rows.splice(0, 0, '....H.HH.H....'); added = 1; }
-  if (band) put(2 + added, [4, 5, 6, 7, 8, 9], 'W');
-  return { rows, added };
-}
-const spriteCache = {};
-function sprite(p, U, frame){
-  const key = [p.id, U.J, U.P, frame, p.style, p.skin, p.hair].join('|');
-  if (spriteCache[key]) return spriteCache[key];
-  const body = [...BODY];
-  if (frame !== 'stand') ARMS[frame === 'run0' || frame === 'run1' ? 0 : 1].forEach((row, i) => { body[7 + i] = row; });
-  const rows = styleHair(body, p).rows.concat(LEGS[frame] || LEGS.stand);
-  const pal = { H:p.hair, S:p.skin, s:shade(p.skin, -.16), E:'#1d1d27', J:U.J, j:shade(U.J, -.18), P:U.P, R:shade(U.P, -.25), W:'#f4f4f4', K:'#1d1d27' };
-  const c = document.createElement('canvas'); c.width = 14; c.height = rows.length;
+const figCache = {};
+// o: { pose } for a still pose, or { f (0-7), lean (index into LEAN), arm ('pump', 'back' reaching back for the baton, 'fwd' holding it out) }, plus baton
+function figure(p, U, o){
+  const key = [p.id, U.J, U.P, o.pose || o.f, o.lean, o.arm, o.baton ? 1 : 0, p.style, p.skin, p.hair].join('|');
+  if (figCache[key]) return figCache[key];
+  const c = document.createElement('canvas'); c.width = FW; c.height = FH;
   const g = c.getContext('2d');
-  rows.forEach((r, y) => [...r].forEach((ch, x) => { if (pal[ch]) { g.fillStyle = pal[ch]; g.fillRect(x, y, 1, 1); } }));
-  return spriteCache[key] = c;
+  const seg = (a, b, w, col) => {
+    const n = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]), 1) * 2;
+    g.fillStyle = col;
+    for (let i = 0; i <= n; i++) { const x = a[0] + (b[0] - a[0]) * i / n, y = a[1] + (b[1] - a[1]) * i / n; g.fillRect(Math.round(x - w / 2), Math.round(y - w / 2), w, w); }
+  };
+  let th, legs, arms;
+  const P = POSE[o.pose];
+  if (P) ({ th, legs, arms } = P);
+  else {
+    const f = o.f, f2 = (f + 4) % 8;
+    th = LEAN[o.lean]; legs = [[RUN_A[f], RUN_K[f]], [RUN_A[f2], RUN_K[f2]]]; arms = [[RUN_ARM[f], 1.5], [RUN_ARM[f2], 1.5]];
+    if (o.arm === 'back') arms[0] = [-1.75, .1];
+    if (o.arm === 'fwd') arms[0] = [1.35, .15];
+  }
+  const T1 = 7.5, T2 = 7.5, A1 = 6, A2 = 6, TR = 14;
+  const ankleY = ([a, k]) => T1 * Math.cos(a) + T2 * Math.cos(a - k);
+  const low = Math.max(ankleY(legs[0]), ankleY(legs[1]));
+  const hy = GROUND - 2 - (P ? low : clamp(low, 13.2, 14.9));          // running: under 13.2 both feet are off the ground
+  const skin = p.skin, skinD = shade(skin, -.22), hair = p.hair;
+  const sh = [HX + TR * Math.sin(th), hy - 2 - TR * Math.cos(th)];
+  const leg = ([a, k], hipX, far) => {
+    const hip = [hipX, hy - 1], knee = [hip[0] + T1 * Math.sin(a), hip[1] + T1 * Math.cos(a)];
+    let ankle = [knee[0] + T2 * Math.sin(a - k), knee[1] + T2 * Math.cos(a - k)];
+    if (ankle[1] > GROUND - 2) ankle = [ankle[0], GROUND - 2];
+    const sk = far ? skinD : skin;
+    seg(hip, knee, 4, sk); seg(knee, ankle, 3, sk);
+    seg(hip, [lerp(hip[0], knee[0], .4), lerp(hip[1], knee[1], .4)], 5, far ? shade(U.P, -.25) : U.P);       // the leg of his shorts
+    seg([lerp(knee[0], ankle[0], .75), lerp(knee[1], ankle[1], .75)], ankle, 3, far ? '#c9ccd6' : '#f4f4f4');   // sock
+    const ax = Math.round(ankle[0]), ay = Math.round(ankle[1]);
+    g.fillStyle = far ? '#14141c' : '#1d1d27'; g.fillRect(ax - 2, ay, 6, 2);                                 // shoe, toe forward
+    g.fillStyle = far ? '#b8b8c0' : '#e6e6ea'; g.fillRect(ax - 2, ay + 1, 6, 1);
+  };
+  const arm = ([a, b], far, baton) => {
+    const el = [sh[0] + A1 * Math.sin(a), sh[1] + A1 * Math.cos(a)], hand = [el[0] + A2 * Math.sin(a + b), el[1] + A2 * Math.cos(a + b)];
+    const sk = far ? skinD : skin;
+    if (baton) { const dx = Math.sin(a + b), dy = Math.cos(a + b); o.arm === 'fwd' ? seg(hand, [hand[0] + 5, hand[1] - 1], 2, '#ffd23f') : seg([hand[0] + dy * 3, hand[1] - dx * 3], [hand[0] - dy * 2.5, hand[1] + dx * 2.5], 2, '#ffd23f'); }
+    seg(sh, el, 3, sk); seg(el, hand, 3, sk);
+  };
+  arm(arms[1], true, false);
+  leg(legs[1], HX - 1, true);
+  seg([HX, hy - 2], sh, 7, U.J);                                      // singlet
+  seg([HX, hy - 2], [HX + Math.sin(th) * 4, hy - 2 - Math.cos(th) * 4], 7, shade(U.J, -.14));
+  leg(legs[0], HX + 1, false);
+  seg([HX - Math.sin(th), hy - 1], [HX, hy + 1], 8, U.P);              // shorts
+  // head: in line with the trunk, held a little more upright than it
+  const hd = [Math.sin(th) * .8, -Math.cos(th) * .8 - .2], hl = Math.hypot(hd[0], hd[1]), hc = [sh[0] + hd[0] / hl * 6.5 + 1, sh[1] + hd[1] / hl * 6.5];
+  seg(sh, hc, 3, skin);
+  const x0 = Math.round(hc[0] - 3.5), y0 = Math.round(hc[1] - 4), R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x0 + x, y0 + y, w, h); };
+  R(0, 0, 7, 8, skin); R(7, 4, 1, 1, skin); g.clearRect(x0, y0 + 7, 1, 1); g.clearRect(x0 + 6, y0 + 7, 1, 1);
+  const style = p.style;
+  if (style === 'fade') { R(0, 0, 7, 2, hair); R(0, 2, 2, 2, hair); }
+  else if (style === 'afro') { R(-2, -3, 10, 5, hair); R(-2, 2, 3, 3, hair); g.clearRect(x0 - 2, y0 - 3, 1, 1); g.clearRect(x0 + 7, y0 - 3, 1, 1); }
+  else if (style === 'curly') { R(-1, -1, 8, 3, hair); [0, 2, 4, 6].forEach(x => R(x, -2, 1, 1, hair)); R(-1, 2, 2, 2, hair); }
+  else { R(2, 0, 3, 1, shade(skin, .14)); R(0, 1, 7, 1, '#ffffff'); }                                    // headband
+  R(1, 4, 1, 2, skinD);                                                // ear
+  R(4, 3, 1, 1, '#f4f4f4'); R(5, 3, 1, 1, '#1d1d27'); R(5, 6, 2, 1, '#8a3b2e');   // eye, mouth
+  arm(arms[0], false, o.baton);
+  // in-color edges: darken every pixel that touches transparency, so the figure reads against the track
+  const d = g.getImageData(0, 0, FW, FH), a = d.data, out = new Uint8ClampedArray(a);
+  const op = (x, y) => x >= 0 && y >= 0 && x < FW && y < FH && a[(y * FW + x) * 4 + 3] > 0;
+  for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+    const i = (y * FW + x) * 4; if (!a[i + 3]) continue;
+    if (!op(x - 1, y) || !op(x + 1, y) || !op(x, y - 1) || !op(x, y + 1)) { out[i] = a[i] * .6; out[i + 1] = a[i + 1] * .6; out[i + 2] = a[i + 2] * .66; }
+  }
+  a.set(out); g.putImageData(d, 0, 0);
+  return figCache[key] = c;
 }
 const FONT = {
   'A':['.#.','#.#','###','#.#','#.#'],'B':['##.','#.#','##.','#.#','##.'],'C':['.##','#..','#..','#..','.##'],'D':['##.','#.#','#.#','#.#','##.'],'E':['###','#..','##.','#..','###'],
@@ -1155,28 +1186,52 @@ const FONT = {
 const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].forEach((ch, i) => (FONT[ch] || FONT[' ']).forEach((r, yy) => [...r].forEach((p, xx) => { if (p === '#') c.fillRect(x + (i * 4 + xx) * k, y + yy * k, k, k); }))); };
 
 /* ============================ watching the race ============================
-   The track is a 400 m oval seen from the home-straight side, six lanes, everyone in his own lane all the way round.
-   A lap is four quarters of 100 m: the right-hand bend, the back straight (running left), the left-hand bend and the
-   home straight to the finish line at its right-hand end. The camera slides along with your runner on the straights
-   and sits still while he's on a bend (user). Nothing here decides anything: the times were set when you pressed Race. */
-const CH = 180, SS = 4, LS = 520, RX0 = 58, RY0 = 26, WX = 8, WY = 7.5, LANES = 6, PAD = 12;
+   A standard 400 m track seen from the home-straight side: two 100 m straights and two 100 m bends in lane 1, and every
+   lane out is 7.5 m longer per lap (user), all of it in the bends. So races start staggered: lane 1 on the line, lane 2
+   7.5 m round the first bend, lane 6 37.5 m round it. The 4x100 stays in lanes all the way; in the 4x200 and 4x400
+   the first lap is in lanes and after it everyone runs in lane 1 (user).
+   Runners cover the same number of screen pixels per metre on the bends as on the straights (user): the bends are
+   drawn long enough for that, and a runner's place on a bend is worked out by distance along it, not by angle.
+   The camera slides along with your runner on the straights and sits still while he's on a bend (user).
+   Nothing here decides anything: the times were set when you pressed Race. */
+const CH = 180, SS = 6, LS = 300, RX0 = 128, RY0 = 30, WX = 5.5, WY = 7, LANES = 6, PAD = 12;
 const RXO = RX0 + LANES * WX, RYO = RY0 + LANES * WY, XL = PAD + RXO, XR = XL + LS, CY = 106, WORLD_W = XR + RXO + PAD;
-const SPR = .55;                                                      // sprite pixels to track pixels
+const LANE_M = 7.5;                                                   // metres a lap gains per lane out
 let CW = 320, cam = 0, R = null, raf = 0, lastT = 0, trackCv = null;
 const cv = $('#court'), ctx = cv.getContext('2d');
+// the angle round a bend (0 to pi) that is the fraction s of the way along it, measured on the screen
+const arcCache = {};
+function arcAngle(rx, ry, s){
+  const key = Math.round(rx * 4) + '|' + Math.round(ry * 4);
+  let t = arcCache[key];
+  if (!t) { const N = 96; t = [0]; let px = 0, py = ry; for (let i = 1; i <= N; i++) { const a = Math.PI * i / N, x = rx * Math.sin(a), y = ry * Math.cos(a); t[i] = t[i - 1] + Math.hypot(x - px, y - py); px = x; py = y; } arcCache[key] = t; }
+  const N = t.length - 1, want = clamp(s, 0, 1) * t[N];
+  let lo = 0, hi = N; while (hi - lo > 1) { const m = (lo + hi) >> 1; t[m] <= want ? lo = m : hi = m; }
+  return Math.PI * (lo + (want - t[lo]) / (t[hi] - t[lo] || 1)) / N;
+}
+// where lane k (0 = lane 1; fractions are between lanes) is at u of the way round the lap: quarters are the first bend
+// (on the right), the back straight (running left), the second bend and the home straight up to the finish line
 function lanePos(k, u){
   u = ((u % 1) + 1) % 1;
-  const rx = RX0 + (k + .5) * WX, ry = RY0 + (k + .5) * WY, q = Math.floor(u * 4), s = u * 4 - q, a = Math.PI * s;
-  if (q === 0) return { x:XR + rx * Math.sin(a), y:CY + ry * Math.cos(a), dx:Math.cos(a) };
+  const rx = RX0 + (k + .5) * WX, ry = RY0 + (k + .5) * WY, q = Math.floor(u * 4), s = u * 4 - q;
+  if (q === 0) { const a = arcAngle(rx, ry, s); return { x:XR + rx * Math.sin(a), y:CY + ry * Math.cos(a), dx:Math.cos(a) }; }
   if (q === 1) return { x:XR - LS * s, y:CY - ry, dx:-1 };
-  if (q === 2) return { x:XL - rx * Math.sin(a), y:CY - ry * Math.cos(a), dx:-Math.cos(a) };
+  if (q === 2) { const a = arcAngle(rx, ry, s); return { x:XL - rx * Math.sin(a), y:CY - ry * Math.cos(a), dx:-Math.cos(a) }; }
   return { x:XL + LS * s, y:CY + ry, dx:1 };
+}
+// metres from the finish line along lane k, as a fraction of the way round
+function uOf(k, d){
+  const B = 100 + LANE_M / 2 * k, lap = 400 + LANE_M * k; d = ((d % lap) + lap) % lap;
+  if (d < B) return d / B / 4; d -= B;
+  if (d < 100) return (1 + d / 100) / 4; d -= 100;
+  if (d < B) return (2 + d / B) / 4;
+  return Math.min(.99999, (3 + (d - B) / 100) / 4);
 }
 function ovalPath(g, rx, ry){
   g.beginPath(); g.moveTo(XL, CY + ry); g.lineTo(XR, CY + ry); g.ellipse(XR, CY, rx, ry, 0, Math.PI / 2, -Math.PI / 2, true);
   g.lineTo(XL, CY - ry); g.ellipse(XL, CY, rx, ry, 0, -Math.PI / 2, Math.PI / 2, true); g.closePath();
 }
-function buildTrack(title){
+function buildTrack(title, ev){
   const c = document.createElement('canvas'); c.width = WORLD_W * SS; c.height = CH * SS;
   const g = c.getContext('2d'); g.scale(SS, SS);
   g.fillStyle = '#3f9b4b'; g.fillRect(0, 0, WORLD_W, CH);
@@ -1189,18 +1244,23 @@ function buildTrack(title){
   // the track: clay with white lane lines (user)
   ovalPath(g, RXO + 2, RYO + 2); g.fillStyle = '#8f3f25'; g.fill();
   ovalPath(g, RXO, RYO); g.fillStyle = '#c9613f'; g.fill();
-  g.strokeStyle = '#ffffff'; g.lineWidth = .7;
+  g.strokeStyle = '#ffffff'; g.lineWidth = .6;
   for (let j = 0; j <= LANES; j++) { ovalPath(g, RX0 + j * WX, RY0 + j * WY); g.stroke(); }
-  ovalPath(g, RX0 - .4, RY0 - .4); g.fillStyle = '#4aa856'; g.fill();
-  g.save(); ovalPath(g, RX0 - .4, RY0 - .4); g.clip();
+  ovalPath(g, RX0 - .3, RY0 - .3); g.fillStyle = '#4aa856'; g.fill();
+  g.save(); ovalPath(g, RX0 - .3, RY0 - .3); g.clip();
   for (let x = XL - RX0; x < XR + RX0; x += 40) { g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(x, CY - RY0, 20, RY0 * 2); }
   g.restore();
   const tw = title.length * 8 - 2; pxText(g, title, Math.round((XL + XR) / 2 - tw / 2), CY - 5, 'rgba(255,255,255,.55)', 2);
-  // finish line (right-hand end of the home straight) and the three exchange marks
+  // a line across one lane
+  const tick = (k, u, col, w) => { const p = lanePos(k - .5, u), q = lanePos(k + .5, u); g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(q.x, q.y); g.stroke(); };
+  // the finish line, and each lane's staggered start line
   g.fillStyle = '#ffffff'; g.fillRect(XR - 1, CY + RY0, 2, RYO - RY0);
   for (let y = 0; y < RYO - RY0; y += 2) { g.fillStyle = (y / 2) % 2 ? '#1d1d27' : '#ffffff'; g.fillRect(XR + 1, CY + RY0 + y, 1, 2); }
-  g.fillStyle = '#ffd23f'; g.fillRect(XR - .5, CY - RYO, 1, RYO - RY0); g.fillRect(XL - .5, CY - RYO, 1, RYO - RY0); g.fillRect(XL - .5, CY + RY0, 1, RYO - RY0);
-  for (let k = 0; k < LANES; k++) pxText(g, String(k + 1), XR - 8, Math.round(CY + RY0 + (k + .5) * WY - 2), 'rgba(255,255,255,.8)');
+  for (let k = 1; k < LANES; k++) tick(k, uOf(k, LANE_M * k), '#ffffff', 1.2);
+  // the exchange zones: a yellow line where the next man waits and another 20 m on (the baton changes hands about 15 m in)
+  for (let i = 1; i < 4; i++) { const m = i * ev.leg, lanes = ev.leg === 100 || m <= 400;
+    for (let k = 0; k < LANES; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, LANE_M * k + m + add) : uOf(0, m - 400 + add), '#ffd23f', .9); } }
+  for (let k = 0; k < LANES; k++) pxText(g, String(k + 1), XR - 7, Math.round(CY + RY0 + (k + .5) * WY - 2), 'rgba(255,255,255,.8)');
   return c;
 }
 function fit(){
@@ -1216,76 +1276,136 @@ addEventListener('orientationchange', () => { setTimeout(() => { if (R) fit(); }
 if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (R) fit(); });
 
 function banner(text, small = ''){ const b = $('#banner'); if (!text) { b.hidden = true; return; } b.hidden = false; b.innerHTML = esc(text) + (small ? `<small>${esc(small)}</small>` : ''); }
+
+/* ---- the baton exchange (user's numbers) ----
+   The next man waits on his mark. When the man with the baton has GO_AT (10) metres left to that mark he takes off, and
+   the 10 m between them closes slowly: the baton changes hands ZONE (15) metres past the mark with both at full speed,
+   the new man an arm's length (REACH) ahead. The man who handed it on then eases down and stops about 25 m later,
+   around 40 m past the mark. So with marks every 100 m: off at 90, exchange at 115, stopped by 140.
+   The race clock still comes out exactly at the time that was run: each man's share is stretched to fit. */
+const GO_AT = 10, ZONE = 15, REACH = 1.2, EASE = 25;
+function raceTeam(o, t, ev){
+  const L = ev.leg, legs = o.legs, cum = [0]; legs.forEach((l, i) => { cum[i + 1] = cum[i] + l.t; });
+  const H = [0], a = [0], b = [];                                     // H: when each man gets the baton; a, b: where he gets it and gives it (metres raced)
+  for (let i = 1; i < 4; i++) { H[i] = cum[i] + ZONE * legs[i - 1].t / L; a[i] = i * L + ZONE + REACH; b[i - 1] = i * L + ZONE; }
+  H[4] = o.total; b[3] = 4 * L;
+  // how each man covers his ground: the lead-off builds speed out of the blocks; the others are already moving
+  // (a slow or bobbled exchange shows as a stutter right after it)
+  const prof = legs.map((l, i) => {
+    if (i === 0) { const c = clamp(1.3 / H[1], .01, .3), e = 1 - c * (1 - Math.exp(-1 / c)); return s => (s - c * (1 - Math.exp(-s / c))) / e; }
+    const q = 1 + clamp(l.loss / l.t, 0, .2); return s => Math.pow(s, q); });
+  const pos = (i, T) => a[i] + (b[i] - a[i]) * prof[i](clamp((T - H[i]) / (H[i + 1] - H[i]), 0, 1));
+  const vE = legs.map((l, i) => { const e = (H[i + 1] - H[i]) * .01; return (b[i] - pos(i, H[i + 1] - e)) / e; });   // his speed as he hands over
+  const go = [0];                                                     // when each man takes off
+  for (let i = 1; i < 4; i++) { let lo = H[i - 1], hi = H[i]; for (let n = 0; n < 32; n++) { const m = (lo + hi) / 2; pos(i - 1, m) < i * L - GO_AT ? lo = m : hi = m; } go[i] = lo; }
+  return { t, user:t.user, lane:t.lane, U:{ J:t.c1, P:t.c2 }, runners:t.lineup.map(x => t.roster[x.i]), total:o.total, place:o.place,
+    H, a, b, pos, vE, go, ph:[0, 1, 2, 3].map(() => Math.random()), lx:[null, null, null, null] };
+}
+// where man i of a team is at race time T: metres raced and what he's doing
+function runnerAt(tm, i, T){
+  const L = R.ev.leg, { H, a, b, go } = tm;
+  if (T >= H[i + 1] && R.T > 0) {                                     // handed on, or finished: ease down and stop
+    const td = 2 * EASE / tm.vE[i], s = clamp((T - H[i + 1]) / td, 0, 1);
+    return { m:b[i] + EASE * (1 - (1 - s) * (1 - s)), st:s < 1 ? 'slow' : 'done', s, since:(T - H[i + 1] - td) / R.ev.watch };
+  }
+  if (T >= H[i]) { if (R.T <= 0) return { m:0, st:'blocks' }; const m = tm.pos(i, T); return { m, st:'carry', s:(T - H[i]) / (H[i + 1] - H[i]), left:b[i] - m }; }
+  if (T >= go[i]) { const s = (T - go[i]) / (H[i] - go[i]); return { m:i * L + (ZONE + REACH) * Math.pow(s, (GO_AT + ZONE) / (ZONE + REACH)), st:'go', s }; }
+  return { m:i * L, st:'wait' };
+}
+const smooth = v => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
+// a point on the screen for man i at m metres raced: in his own lane for the first lap, then in lane 1, except that he
+// takes and gives the baton out in his team's lane and cuts in and out over about 30 m
+function place(tm, i, m){
+  const K = tm.lane;
+  if (R.ev.leg === 100 || tm.a[i] < 400) return lanePos(K, uOf(K, LANE_M * K + m));
+  const inside = K * .2;                                              // the pack fans out a little so they don't run through each other
+  let lat = K + (inside - K) * smooth((m - tm.a[i] - 5) / 30);
+  if (i < 3) lat += (K - lat) * smooth((m - (tm.b[i] - 45)) / 30);
+  // these exchanges are at the start of a bend, out in the team's lane, where a metre covers less of the bend than it
+  // does in lane 1: count it that way through the exchange so the two men stay the right distance apart
+  const wide = Math.max(1 - smooth((m - tm.a[i]) / 40), i < 3 && m >= tm.b[i] - ZONE ? 1 : 0);
+  const d = (((m - 400) % 400) + 400) % 400, q = Math.floor(d / 100);
+  let f = d / 100 - q; if (q % 2 === 0) f *= 1 - wide + wide * 100 / (100 + LANE_M / 2 * lat);
+  return lanePos(lat, Math.min(.99999, (q + f) / 4));
+}
 function startRace(){
   const M = G.meet, ev = EVENTS[M.ev], res = M.last;
-  const teams = res.map(o => { const t = M.teams[o.ti]; let c = 0;
-    return { t, user:t.user, lane:t.lane, U:{ J:t.c1, P:t.c2 }, runners:t.lineup.map(L => t.roster[L.i]), legs:o.legs, cum:o.legs.map(l => { const at = c; c += l.t; return at; }), total:o.total, place:o.place, ph:Math.random() * 4 }; });
-  R = { ev, teams, lf:ev.leg / 400, T:0, real:0, end:Math.max(...teams.map(t => t.total)), over:0, called:false };
-  trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY');
+  R = { ev, T:0, real:0, over:0, called:false };
+  R.teams = res.map(o => raceTeam(o, M.teams[o.ti], ev));
+  R.end = Math.max(...R.teams.map(t => t.total));
+  trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY', ev);
   $('#evn').textContent = ev.name; $('#clk').textContent = '0.00'; $('#order').innerHTML = '';
   $('#game').hidden = false; fit();
-  cam = WORLD_W - CW; lastT = performance.now();
+  cam = null; lastT = performance.now();
   cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
 }
 function endRace(){
   cancelAnimationFrame(raf); R = null; banner(''); $('#game').hidden = true; render();
 }
-// everyone a team has on the track at race time T: the man with the baton, the ones waiting for it, and the one who just handed it on
-function teamEnts(tm, T){
-  const out = [], lf = R.lf, w = R.ev.watch, tau = .45;
-  const fin = T >= tm.total;
-  let i = 0; while (i < 3 && T >= tm.cum[i + 1]) i++;
-  const coast = k => {                                                // leg k is done: he eases down in his lane
-    const endAt = k === 3 ? tm.total : tm.cum[k + 1], d = (T - endAt) / w; if (k < 3 && d > 2.2) return;
-    const v = lf / tm.legs[k].t * w;
-    out.push({ r:tm.runners[k], u:(k + 1) * lf + v * tau * (1 - Math.exp(-d / tau)) * .8, run:d < 1.1, baton:k === 3 });
-  };
-  if (fin) coast(3);
-  else {
-    const leg = tm.legs[i], hold = i ? Math.max(0, leg.loss - .15) : 0, s = clamp((T - tm.cum[i] - hold) / (leg.t - hold), 0, 1);
-    out.push({ r:tm.runners[i], u:(i + (i ? s : Math.pow(s, 1.08))) * lf, run:T > 0 && s > 0, baton:true, lead:true });
-    if (i > 0) coast(i - 1);
-    for (let j = i + 1; j < 4; j++) if (j === i + 1 || R.ev.leg === 100) out.push({ r:tm.runners[j], u:j * lf + .0005, run:false });
-  }
-  return out;
-}
-const progress = (tm, T) => { if (T >= tm.total) return 100 - tm.total / 1000; let i = 0; while (i < 3 && T >= tm.cum[i + 1]) i++; return i + clamp((T - tm.cum[i]) / tm.legs[i].t, 0, 1); };
+// metres the baton has gone
+const batonAt = (tm, T) => { if (T >= tm.total) return 1e5 - tm.total; let i = 0; while (i < 3 && T >= tm.H[i + 1]) i++; return tm.pos(i, T); };
 let orderT = 0;
 function update(dt){
   R.real += dt;
-  if (R.real < 1) banner('On your marks');
-  else if (R.real < 1.9) banner('Set');
+  if (R.real < 1.1) banner('On your marks');
+  else if (R.real < 2.1) banner('Set');
   else {
     if (R.T === 0) banner('');
     R.T += dt * R.ev.watch;
     const mine = R.teams.find(t => t.user);
     if (!R.called && R.T >= mine.total) { R.called = true; banner(ordinal(mine.place), fmt(mine.total)); }
-    if (R.T >= R.end) { R.over += dt; if (R.over > 2) return endRace(); }
+    if (R.T >= R.end) { R.over += dt; if (R.over > 2.6) return endRace(); }
   }
   $('#clk').textContent = fmt(Math.min(R.T, R.end));
   if ((orderT -= dt) <= 0) { orderT = .2;
-    const ord = [...R.teams].sort((a, b) => progress(b, R.T) - progress(a, R.T));
+    const ord = [...R.teams].sort((a, b) => batonAt(b, R.T) - batonAt(a, R.T));
     $('#order').innerHTML = ord.map((tm, k) => `<span class="och ${tm.user ? 'me' : ''}">${k + 1}<i style="background:${tm.t.c1};border-color:${tm.t.c2}"></i>${esc(tm.t.abbr.slice(0, 4))}</span>`).join(''); }
 }
 function draw(dt){
-  const ents = [];
+  const ents = [], T = R.T, L = R.ev.leg;
   let focus = null;
-  for (const tm of R.teams) for (const e of teamEnts(tm, R.T)) { const p = lanePos(tm.lane, e.u); Object.assign(e, p, { tm }); ents.push(e); if (tm.user && e.lead) focus = e; }
-  if (!focus) focus = ents.find(e => e.tm.user && e.baton);
-  const want = clamp(focus.x - CW / 2, 0, WORLD_W - CW);
-  cam += (want - cam) * Math.min(1, dt * 7);
+  for (const tm of R.teams) {
+    let cur = 0; while (cur < 3 && T >= tm.H[cur + 1]) cur++;
+    for (let i = 0; i < 4; i++) {
+      const s = runnerAt(tm, i, T);
+      let alpha = 1, o;
+      if (s.st === 'wait') {
+        if (!(i === cur + 1 || L === 100)) continue;
+        if (L !== 100) alpha = clamp((T - tm.H[i - 1]) / R.ev.watch / .5, 0, 1);       // he walks out when the leg before his starts
+        o = { pose:i === cur + 1 && i * L - batonAt(tm, T) < 45 ? 'ready' : 'stand' };
+      } else if (s.st === 'blocks') o = { pose:R.real < 1.1 ? 'marks' : 'set', baton:true };
+      else if (s.st === 'done') {
+        if (L !== 100 && i < 3) { alpha = clamp(1.6 - s.since, 0, 1); if (alpha <= 0) continue; }   // off the track before the others come round again
+        o = { pose:'stand', baton:i === 3 };
+      } else {
+        // how fast his legs go follows how fast he's moving, up to a sprint cadence the eye can still read
+        const moved = tm.lx[i] === null ? 0 : s.m - tm.lx[i], cad = dt > 0 ? clamp(moved / dt / 4.4, 1.3, 4.2) : 0;
+        tm.ph[i] = (tm.ph[i] + dt * cad) % 1;
+        o = { f:Math.floor(tm.ph[i] * 8) % 8, arm:'pump', lean:3 };
+        if (s.st === 'carry') { o.baton = true; o.lean = i === 0 ? (s.m < 6 ? 5 : s.m < 16 ? 4 : 3) : 3; if (i < 3 && s.left < 5) o.arm = 'fwd'; }
+        else if (s.st === 'go') { o.lean = s.s < .55 ? 4 : 3; if (s.s > .62) o.arm = 'back'; }
+        else { o.lean = s.s < .35 ? 2 : s.s < .75 ? 1 : 0; o.baton = i === 3; }
+      }
+      tm.lx[i] = s.m;
+      const p = place(tm, i, s.m);
+      const e = { x:p.x, y:p.y, face:p.dx >= 0 ? 1 : -1, spr:figure(tm.runners[i], tm.U, o), alpha, mark:tm.user && !!o.baton };
+      ents.push(e);
+      if (tm.user && (i === cur) && (s.st === 'carry' || s.st === 'blocks' || i === 3)) focus = e;
+    }
+  }
+  if (focus) { const want = clamp(focus.x - CW / 2, 0, WORLD_W - CW); cam = cam === null ? want : cam + (want - cam) * Math.min(1, dt * 7); }
+  if (cam === null) cam = WORLD_W - CW;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
   ctx.drawImage(trackCv, Math.round(cam * SS), 0, CW * SS, CH * SS, 0, 0, CW * SS, CH * SS);
   ctx.setTransform(SS, 0, 0, SS, -Math.round(cam * SS), 0);
   ents.sort((a, b) => a.y - b.y);
   for (const e of ents) {
-    const frame = e.run ? 'run' + ((Math.floor(R.real * 11 + e.tm.ph) % 4 + 4) % 4) : 'stand', spr = sprite(e.r, e.tm.U, frame), w = 14 * SPR, h = spr.height * SPR, face = e.dx >= 0 ? 1 : -1;
-    ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect(e.x - 3, e.y - .8, 6, 1.6);
-    ctx.save(); ctx.translate(e.x, e.y); ctx.scale(face, 1); ctx.drawImage(spr, -w / 2, -h, w, h);
-    if (e.baton) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(3, -h * .5, 2.2, .9); }
-    ctx.restore();
-    if (e.tm.user && e.baton) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(e.x - 2, e.y - h - 4, 4, 1); ctx.fillRect(e.x - 1, e.y - h - 3, 2, 1); }
+    ctx.globalAlpha = e.alpha * .28; ctx.fillStyle = '#000'; ctx.fillRect(e.x - 3.5, e.y - .8, 7, 1.6);
+    ctx.globalAlpha = e.alpha;
+    ctx.save(); ctx.translate(e.x, e.y); ctx.scale(e.face * FIG, FIG); ctx.drawImage(e.spr, -HX, -GROUND); ctx.restore();
+    if (e.mark) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(e.x - 2, e.y - 19, 4, 1); ctx.fillRect(e.x - 1, e.y - 18, 2, 1); }
   }
+  ctx.globalAlpha = 1;
 }
 function loop(now){
   const dt = clamp((now - lastT) / 1000, 0, .05); lastT = now;
