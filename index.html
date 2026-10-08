@@ -1086,11 +1086,13 @@ const ACT = {
 document.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; const f = ACT[b.dataset.a]; if (f) f(b.dataset, b); });
 
 /* ============================ runner sprites ============================
-   Every runner is drawn from a little skeleton, side-on and facing right: hips, a leaning trunk, a head, two-part arms
-   and two-part legs. Running is an 8-frame sprint cycle (user): the knee drives up folded, the leg reaches, lands
-   under the body, pushes off behind and the heel kicks up; the arms pump opposite the legs; there are two moments per
-   cycle with both feet off the ground. Angles are in radians from straight down, positive toward the front. */
-const FW = 48, FH = 60, HX = 18, GROUND = 58, FIG = .5;            // sprite size in fine pixels, hip x, ground line; FIG: fine pixels to track pixels
+   Chunky and flat, in the Retro Bowl manner (user): big square pixels, a handful of colors, no outlines or shading
+   beyond a darker far arm and leg. Each runner is still posed from a little skeleton (hips, a leaning trunk, a head,
+   two-part arms and legs), side-on and facing right, but drawn on a grid only 18 x 20 pixels big.
+   Running is an 8-frame sprint cycle (user): the knee drives up folded, the leg reaches, lands under the body, pushes
+   off behind and the heel kicks up; the arms pump opposite the legs. Angles are radians from straight down, positive
+   toward the front. */
+const FW = 18, FH = 20, HX = 7, GROUND = 19, FIG = 1.5;               // sprite size in its own big pixels, hip x, ground line; FIG: one sprite pixel in track pixels
 const LEAN = [-.1, 0, .14, .24, .42, .62];                            // trunk lean: easing down, upright, jog, sprint, driving, out of the blocks
 const RUN_A = [.12, .70, .94, .70, .12, -.46, -.70, -.46];            // thigh angle through the cycle
 const RUN_K = [1.7, 1.25, .85, .3, .1, .12, .35, 1.15];               // knee fold through the cycle
@@ -1108,8 +1110,9 @@ function figure(p, U, o){
   if (figCache[key]) return figCache[key];
   const c = document.createElement('canvas'); c.width = FW; c.height = FH;
   const g = c.getContext('2d');
+  // a limb: a row of w x w squares from a to b
   const seg = (a, b, w, col) => {
-    const n = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]), 1) * 2;
+    const n = Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]), 1) * 2);
     g.fillStyle = col;
     for (let i = 0; i <= n; i++) { const x = a[0] + (b[0] - a[0]) * i / n, y = a[1] + (b[1] - a[1]) * i / n; g.fillRect(Math.round(x - w / 2), Math.round(y - w / 2), w, w); }
   };
@@ -1122,57 +1125,42 @@ function figure(p, U, o){
     if (o.arm === 'back') arms[0] = [-1.75, .1];
     if (o.arm === 'fwd') arms[0] = [1.35, .15];
   }
-  const T1 = 7.5, T2 = 7.5, A1 = 6, A2 = 6, TR = 14;
+  const T1 = 2.7, T2 = 2.7, A1 = 2.1, A2 = 2.1, TR = 4.4;
   const ankleY = ([a, k]) => T1 * Math.cos(a) + T2 * Math.cos(a - k);
   const low = Math.max(ankleY(legs[0]), ankleY(legs[1]));
-  const hy = GROUND - 2 - (P ? low : clamp(low, 13.2, 14.9));          // running: under 13.2 both feet are off the ground
-  const skin = p.skin, skinD = shade(skin, -.22), hair = p.hair;
-  const sh = [HX + TR * Math.sin(th), hy - 2 - TR * Math.cos(th)];
+  const hy = GROUND - 1.5 - (P ? low : clamp(low, 4.75, 5.35));       // running: under 4.75 both feet are off the ground
+  const skin = p.skin, skinD = shade(skin, -.2), hair = p.hair;
+  const sh = [HX + TR * Math.sin(th), hy - 1 - TR * Math.cos(th)];
   const leg = ([a, k], hipX, far) => {
-    const hip = [hipX, hy - 1], knee = [hip[0] + T1 * Math.sin(a), hip[1] + T1 * Math.cos(a)];
+    const hip = [hipX, hy], knee = [hip[0] + T1 * Math.sin(a), hip[1] + T1 * Math.cos(a)];
     let ankle = [knee[0] + T2 * Math.sin(a - k), knee[1] + T2 * Math.cos(a - k)];
-    if (ankle[1] > GROUND - 2) ankle = [ankle[0], GROUND - 2];
+    if (ankle[1] > GROUND - 1.5) ankle = [ankle[0], GROUND - 1.5];
     const sk = far ? skinD : skin;
-    seg(hip, knee, 4, sk); seg(knee, ankle, 3, sk);
-    seg(hip, [lerp(hip[0], knee[0], .4), lerp(hip[1], knee[1], .4)], 5, far ? shade(U.P, -.25) : U.P);       // the leg of his shorts
-    seg([lerp(knee[0], ankle[0], .75), lerp(knee[1], ankle[1], .75)], ankle, 3, far ? '#c9ccd6' : '#f4f4f4');   // sock
-    const ax = Math.round(ankle[0]), ay = Math.round(ankle[1]);
-    g.fillStyle = far ? '#14141c' : '#1d1d27'; g.fillRect(ax - 2, ay, 6, 2);                                 // shoe, toe forward
-    g.fillStyle = far ? '#b8b8c0' : '#e6e6ea'; g.fillRect(ax - 2, ay + 1, 6, 1);
+    seg(hip, knee, 2, sk); seg(knee, ankle, 2, sk);
+    const ax = Math.round(ankle[0] - 1), ay = Math.round(ankle[1] - .5);
+    g.fillStyle = far ? '#c9ccd6' : '#ffffff'; g.fillRect(ax, ay + 1, 3, 1);          // shoe, toe forward
   };
   const arm = ([a, b], far, baton) => {
-    const el = [sh[0] + A1 * Math.sin(a), sh[1] + A1 * Math.cos(a)], hand = [el[0] + A2 * Math.sin(a + b), el[1] + A2 * Math.cos(a + b)];
-    const sk = far ? skinD : skin;
-    if (baton) { const dx = Math.sin(a + b), dy = Math.cos(a + b); o.arm === 'fwd' ? seg(hand, [hand[0] + 5, hand[1] - 1], 2, '#ffd23f') : seg([hand[0] + dy * 3, hand[1] - dx * 3], [hand[0] - dy * 2.5, hand[1] + dx * 2.5], 2, '#ffd23f'); }
-    seg(sh, el, 3, sk); seg(el, hand, 3, sk);
+    const el = [sh[0] + A1 * Math.sin(a), sh[1] + .5 + A1 * Math.cos(a)], hand = [el[0] + A2 * Math.sin(a + b), el[1] + A2 * Math.cos(a + b)];
+    seg([sh[0], sh[1] + .5], el, 1, far ? skinD : skin); seg(el, hand, 1, far ? skinD : skin);
+    if (baton) { g.fillStyle = '#ffd23f'; const hx = Math.round(hand[0] - .5), hyy = Math.round(hand[1] - .5); o.arm === 'fwd' ? g.fillRect(hx + 1, hyy, 2, 1) : g.fillRect(hx, hyy - 1, 1, 2); }
   };
   arm(arms[1], true, false);
-  leg(legs[1], HX - 1, true);
-  seg([HX, hy - 2], sh, 7, U.J);                                      // singlet
-  seg([HX, hy - 2], [HX + Math.sin(th) * 4, hy - 2 - Math.cos(th) * 4], 7, shade(U.J, -.14));
-  leg(legs[0], HX + 1, false);
-  seg([HX - Math.sin(th), hy - 1], [HX, hy + 1], 8, U.P);              // shorts
-  // head: in line with the trunk, held a little more upright than it
-  const hd = [Math.sin(th) * .8, -Math.cos(th) * .8 - .2], hl = Math.hypot(hd[0], hd[1]), hc = [sh[0] + hd[0] / hl * 6.5 + 1, sh[1] + hd[1] / hl * 6.5];
-  seg(sh, hc, 3, skin);
-  const x0 = Math.round(hc[0] - 3.5), y0 = Math.round(hc[1] - 4), R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x0 + x, y0 + y, w, h); };
-  R(0, 0, 7, 8, skin); R(7, 4, 1, 1, skin); g.clearRect(x0, y0 + 7, 1, 1); g.clearRect(x0 + 6, y0 + 7, 1, 1);
+  leg(legs[1], HX - .5, true);
+  seg([HX, hy - 1], sh, 3, U.J);                                      // singlet
+  leg(legs[0], HX + .5, false);
+  seg([HX, hy - .5], [HX, hy + .5], 3, U.P);                           // shorts
+  // head: a 3 x 3 block in line with the trunk, held a little more upright than it; hair on top, one dark pixel for an eye
+  const hd = [Math.sin(th) * .8, -Math.cos(th) * .8 - .2], hl = Math.hypot(hd[0], hd[1]), hc = [sh[0] + hd[0] / hl * 2.6 + .4, sh[1] + hd[1] / hl * 2.6];
+  const x0 = Math.round(hc[0] - 1.5), y0 = Math.round(hc[1] - 1.5), R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x0 + x, y0 + y, w, h); };
+  R(0, 0, 3, 3, skin);
   const style = p.style;
-  if (style === 'fade') { R(0, 0, 7, 2, hair); R(0, 2, 2, 2, hair); }
-  else if (style === 'afro') { R(-2, -3, 10, 5, hair); R(-2, 2, 3, 3, hair); g.clearRect(x0 - 2, y0 - 3, 1, 1); g.clearRect(x0 + 7, y0 - 3, 1, 1); }
-  else if (style === 'curly') { R(-1, -1, 8, 3, hair); [0, 2, 4, 6].forEach(x => R(x, -2, 1, 1, hair)); R(-1, 2, 2, 2, hair); }
-  else { R(2, 0, 3, 1, shade(skin, .14)); R(0, 1, 7, 1, '#ffffff'); }                                    // headband
-  R(1, 4, 1, 2, skinD);                                                // ear
-  R(4, 3, 1, 1, '#f4f4f4'); R(5, 3, 1, 1, '#1d1d27'); R(5, 6, 2, 1, '#8a3b2e');   // eye, mouth
+  if (style === 'fade') R(0, 0, 3, 1, hair);
+  else if (style === 'afro') { R(-1, -1, 4, 2, hair); R(-1, 1, 1, 1, hair); }
+  else if (style === 'curly') { R(0, -1, 3, 1, hair); R(-1, 0, 2, 1, hair); }
+  else R(0, 0, 3, 1, '#ffffff');                                       // headband
+  R(2, 1, 1, 1, '#1d1d27');
   arm(arms[0], false, o.baton);
-  // in-color edges: darken every pixel that touches transparency, so the figure reads against the track
-  const d = g.getImageData(0, 0, FW, FH), a = d.data, out = new Uint8ClampedArray(a);
-  const op = (x, y) => x >= 0 && y >= 0 && x < FW && y < FH && a[(y * FW + x) * 4 + 3] > 0;
-  for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
-    const i = (y * FW + x) * 4; if (!a[i + 3]) continue;
-    if (!op(x - 1, y) || !op(x + 1, y) || !op(x, y - 1) || !op(x, y + 1)) { out[i] = a[i] * .6; out[i + 1] = a[i + 1] * .6; out[i + 2] = a[i + 2] * .66; }
-  }
-  a.set(out); g.putImageData(d, 0, 0);
   return figCache[key] = c;
 }
 const FONT = {
