@@ -431,6 +431,7 @@ td.tl{text-align:left}
 .och.me{border-color:var(--yellow);color:var(--yellow)}
 .och i{width:8px;height:8px;border:1px solid #fff}
 .gbtn{top:auto;bottom:calc(8px + env(safe-area-inset-bottom) * .5)}
+.gbtn.spd{right:calc(72px + env(safe-area-inset-right) * .7);min-width:44px;font-family:var(--numf)}
 @media (max-height:500px){
   .lu,.two{gap:8px}.rlist{gap:3px}.legs{gap:4px}
   .rrow{padding:3px 6px}
@@ -448,6 +449,7 @@ td.tl{text-align:left}
     <canvas id="court" width="640" height="360"></canvas>
     <div class="rhud"><div class="rbox"><span id="evn"></span><span class="num" id="clk">0.00</span></div><div class="order" id="order"></div></div>
     <button class="btn sm gbtn" id="skipBtn">Skip</button>
+    <button class="btn sm gbtn spd" id="spdBtn">1x</button>
     <div class="banner" id="banner" hidden></div>
   </div>
 </div>
@@ -494,11 +496,11 @@ function giveLook(p){
    then one shot at the Olympics with the USA team. There is no money: top-three finishes earn training points. */
 
 /* ---- events ---- */
-// fly: seconds a running start saves on legs 2-4; cost: energy a steady leg takes; watch: how many race seconds pass per real second
+// fly: seconds a running start saves on legs 2-4; cost: energy a steady leg takes
 const EVENTS = [
-  { key:'x100', name:'4x100', leg:100, fly:.6, cost:30, watch:1.6 },
-  { key:'x200', name:'4x200', leg:200, fly:.5, cost:42, watch:3.2 },
-  { key:'x400', name:'4x400', leg:400, fly:.4, cost:55, watch:6.5 },
+  { key:'x100', name:'4x100', leg:100, fly:.6, cost:30 },
+  { key:'x200', name:'4x200', leg:200, fly:.5, cost:42 },
+  { key:'x400', name:'4x400', leg:400, fly:.4, cost:55 },
 ];
 const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet points for places 1-6 in each relay
 const YEARS = ['FR', 'SO', 'JR', 'SR'];
@@ -1306,7 +1308,7 @@ function runnerAt(tm, i, T){
   const L = R.ev.leg, { H, a, b, go } = tm;
   if (T >= H[i + 1] && R.T > 0) {                                     // handed on, or finished: ease down and stop
     const td = 2 * EASE / tm.vE[i], s = clamp((T - H[i + 1]) / td, 0, 1);
-    return { m:b[i] + EASE * (1 - (1 - s) * (1 - s)), st:s < 1 ? 'slow' : 'done', s, since:(T - H[i + 1] - td) / R.ev.watch };
+    return { m:b[i] + EASE * (1 - (1 - s) * (1 - s)), st:s < 1 ? 'slow' : 'done', s, since:(T - H[i + 1] - td) / R.speed };
   }
   if (T >= H[i]) { if (R.T <= 0) return { m:0, st:'blocks' }; const m = tm.pos(i, T); return { m, st:'carry', s:(T - H[i]) / (H[i + 1] - H[i]), left:b[i] - m }; }
   if (T >= go[i]) { const s = (T - go[i]) / (H[i] - go[i]); return { m:i * L + (ZONE + REACH) * Math.pow(s, (GO_AT + ZONE) / (ZONE + REACH)), st:'go', s }; }
@@ -1330,7 +1332,8 @@ function place(tm, i, m){
 }
 function startRace(){
   const M = G.meet, ev = EVENTS[M.ev], res = M.last;
-  R = { ev, T:0, real:0, over:0, called:false };
+  R = { ev, T:0, real:0, over:0, called:false, speed:1 };              // every race starts at real speed (user); the button steps 1x, 2x, 4x, 8x
+  $('#spdBtn').textContent = '1x';
   R.teams = res.map(o => raceTeam(o, M.teams[o.ti], ev));
   R.end = Math.max(...R.teams.map(t => t.total));
   trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY', ev);
@@ -1351,7 +1354,7 @@ function update(dt){
   else if (R.real < 2.1) banner('Set');
   else {
     if (R.T === 0) banner('');
-    R.T += dt * R.ev.watch;
+    R.T += dt * R.speed;
     const mine = R.teams.find(t => t.user);
     if (!R.called && R.T >= mine.total) { R.called = true; banner(ordinal(mine.place), fmt(mine.total)); }
     if (R.T >= R.end) { R.over += dt; if (R.over > 2.6) return endRace(); }
@@ -1371,7 +1374,7 @@ function draw(dt){
       let alpha = 1, o;
       if (s.st === 'wait') {
         if (!(i === cur + 1 || L === 100)) continue;
-        if (L !== 100) alpha = clamp((T - tm.H[i - 1]) / R.ev.watch / .5, 0, 1);       // he walks out when the leg before his starts
+        if (L !== 100) alpha = clamp((T - tm.H[i - 1]) / R.speed / .5, 0, 1);       // he walks out when the leg before his starts
         o = { pose:i === cur + 1 && i * L - batonAt(tm, T) < 45 ? 'ready' : 'stand' };
       } else if (s.st === 'blocks') o = { pose:R.real < 1.1 ? 'marks' : 'set', baton:true };
       else if (s.st === 'done') {
@@ -1412,6 +1415,7 @@ function loop(now){
   update(dt); if (R) { draw(dt); raf = requestAnimationFrame(loop); }
 }
 $('#skipBtn').addEventListener('click', () => { if (R) endRace(); });
+$('#spdBtn').addEventListener('click', () => { if (!R) return; R.speed = R.speed >= 8 ? 1 : R.speed * 2; $('#spdBtn').textContent = R.speed + 'x'; });
 
 /* ============================ boot ============================ */
 render();
