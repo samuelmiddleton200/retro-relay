@@ -1195,13 +1195,16 @@ const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].f
    exchanges are in lanes 1 to 3 and everyone runs in lane 1 (user).
    Runners cover the same number of screen pixels per metre on the bends as on the straights (user): the bends are
    drawn long enough for that, and a runner's place on a bend is worked out by distance along it, not by angle.
-   The camera slides along with your runner on the straights and sits still while he's on a bend (user).
+   The camera slides along with your runner on the straights; on a bend it stops going sideways and moves up or down.
    Nothing here decides anything: the times were set when you pressed Race. */
-const CH = 180, SS = 6, LS = 300, RX0 = 124, RY0 = 34, LW = 6, LANES = 6, PAD = 12;   // LW: every lane is the same width all the way round, bends and straights (user)
-const RXO = RX0 + LANES * LW, RYO = RY0 + LANES * LW, XL = PAD + RXO, XR = XL + LS, CY = 106, WORLD_W = XR + RXO + PAD;
+/* Seen from straight above, like a real track (user): the bends are true half circles, so nobody whips round a tight
+   tip. Lane 1's bend is as long on the screen as a straight (pi x 80 is about 252), which is what keeps the speed even.
+   That makes the track taller than the screen, so the camera also moves up and down as your runner goes round a bend. */
+const CH = 180, SS = 6, LS = 252, RX0 = 79, RY0 = 79, LW = 4.5, LANES = 6, PAD = 14, STAND = 30;   // LW: every lane is the same width all the way round, bends and straights (user)
+const RXO = RX0 + LANES * LW, RYO = RY0 + LANES * LW, XL = PAD + RXO, XR = XL + LS, CY = STAND + 8 + RYO, WORLD_W = XR + RXO + PAD, WORLD_H = CY + RYO + 8;
 const LANE_M = 7.5;                                                   // metres a lap gains per lane out
 const stagger = ev => LANE_M * (ev.leg === 100 ? 1 : 2);              // head start per lane out: the 4x100 is one lap in lanes; the 4x200 and 4x400 run two laps in lanes (user)
-let CW = 320, cam = 0, R = null, raf = 0, lastT = 0, trackCv = null;
+let CW = 320, cam = 0, camY = 0, R = null, raf = 0, lastT = 0, trackCv = null;
 const cv = $('#court'), ctx = cv.getContext('2d');
 // The inside edge of the track's bend is half an oval; every lane line is that edge moved straight outward by whole
 // lane widths, so a lane is exactly as wide on the bend as on the straight. bendPt: the point at angle a (0 to pi)
@@ -1247,10 +1250,10 @@ function ovalPath(g, off){
   g.closePath();
 }
 function buildTrack(title, ev){
-  const c = document.createElement('canvas'); c.width = WORLD_W * SS; c.height = CH * SS;
+  const c = document.createElement('canvas'); c.width = WORLD_W * SS; c.height = WORLD_H * SS;
   const g = c.getContext('2d'); g.scale(SS, SS);
-  g.fillStyle = '#3f9b4b'; g.fillRect(0, 0, WORLD_W, CH);
-  for (let x = 0; x < WORLD_W; x += 24) { g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(x, 0, 12, CH); }
+  g.fillStyle = '#3f9b4b'; g.fillRect(0, 0, WORLD_W, WORLD_H);
+  for (let x = 0; x < WORLD_W; x += 24) { g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(x, 0, 12, WORLD_H); }
   // the stand along the back straight
   g.fillStyle = '#2a2f45'; g.fillRect(0, 0, WORLD_W, 27); g.fillStyle = '#1b2033'; g.fillRect(0, 27, WORLD_W, 3);
   const crowd = ['#e8b58f', '#c68a61', '#7a4a2b', '#e24b3b', '#ffd23f', '#f4f4f4', '#2f6fe0', '#44c45d', '#f08a24'];
@@ -1276,7 +1279,6 @@ function buildTrack(title, ev){
   // the exchange zones: a yellow line where the next man waits and another 20 m on (the baton changes hands about 15 m in)
   for (let i = 1; i < 4; i++) { const m = i * ev.leg, lanes = ev.leg !== 400 || m < 800;
     for (let k = 0; k < LANES; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, ST * k + m + add) : uOf(0, m - 400 + add), '#ffd23f', .9); } }
-  for (let k = 0; k < LANES; k++) pxText(g, String(k + 1), XR - 7, Math.round(CY + RY0 + (k + .5) * LW - 2), 'rgba(255,255,255,.8)');
   return c;
 }
 function fit(){
@@ -1335,9 +1337,9 @@ const smooth = v => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 function place(tm, i, m){
   const K = tm.lane;
   if (R.ev.leg !== 400) return lanePos(K, uOf(K, stagger(R.ev) * K + m));
-  // the first two laps are in lanes; the second man moves across to his exchange lane up the last of the home straight
-  if (i < 2 && m < 800) return lanePos(i ? K + (tm.xl[2] - K) * smooth((m - 765) / 30) : K, uOf(K, stagger(R.ev) * K + m));
-  const inside = K * .2;                                              // the pack fans out a little so they don't run through each other
+  // the first two laps are in lanes; from 700 m, the start of the last straight, the second man eases across to his exchange lane over about 50 m (user)
+  if (i < 2 && m < 800) return lanePos(i ? K + (tm.xl[2] - K) * smooth((m - 700) / 55) : K, uOf(K, stagger(R.ev) * K + m));
+  const inside = 0;                                                   // everyone in lane 1
   const from = tm.xl[Math.max(i, 2)], to = i < 3 ? tm.xl[i + 1] : 0;   // the lane he takes the baton in, and the one he gives it in
   let lat = i < 2 ? from : from + (inside - from) * smooth((m - tm.a[i] - 5) / 30);
   if (i === 2) lat += (to - lat) * smooth((m - (tm.b[i] - 45)) / 30);
@@ -1354,9 +1356,8 @@ function startRace(){
   $('#spdBtn').textContent = '1x';
   R.teams = res.map(o => raceTeam(o, M.teams[o.ti], ev));
   R.end = Math.max(...R.teams.map(t => t.total));
-  // 4x400, the exchanges after laps 2 and 3: the next men line up in lanes 1 to 3 in the order their teams are coming
-  // in (user): the leader's man on the inside, then lane 2, lane 3, and round again for the teams further back
-  for (const i of [2, 3]) [...R.teams].sort((x, y) => x.H[i] - y.H[i]).forEach((tm, r) => { (tm.xl ||= [])[i] = r % 3; });
+  // 4x400, the exchanges after laps 2 and 3: every team hands off in lane 1; if two arrive together they simply overlap (user)
+  for (const tm of R.teams) tm.xl = [0, 0, 0, 0];
   trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY', ev);
   $('#evn').textContent = ev.name; $('#clk').textContent = '0.00'; $('#order').innerHTML = '';
   $('#game').hidden = false; fit();
@@ -1417,11 +1418,12 @@ function draw(dt){
       if (tm.user && (i === cur) && (s.st === 'carry' || s.st === 'blocks' || i === 3)) focus = e;
     }
   }
-  if (focus) { const want = clamp(focus.x - CW / 2, 0, WORLD_W - CW); cam = cam === null ? want : cam + (want - cam) * Math.min(1, dt * 7); }
-  if (cam === null) cam = WORLD_W - CW;
+  if (focus) { const want = clamp(focus.x - CW / 2, 0, WORLD_W - CW), wantY = clamp(focus.y - CH * .58, 0, WORLD_H - CH), k = Math.min(1, dt * 7);
+    if (cam === null) { cam = want; camY = wantY; } else { cam += (want - cam) * k; camY += (wantY - camY) * k; } }
+  if (cam === null) { cam = WORLD_W - CW; camY = WORLD_H - CH; }
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(trackCv, Math.round(cam * SS), 0, CW * SS, CH * SS, 0, 0, CW * SS, CH * SS);
-  ctx.setTransform(SS, 0, 0, SS, -Math.round(cam * SS), 0);
+  ctx.drawImage(trackCv, Math.round(cam * SS), Math.round(camY * SS), CW * SS, CH * SS, 0, 0, CW * SS, CH * SS);
+  ctx.setTransform(SS, 0, 0, SS, -Math.round(cam * SS), -Math.round(camY * SS));
   ents.sort((a, b) => a.y - b.y);
   for (const e of ents) {
     ctx.globalAlpha = e.alpha * .28; ctx.fillStyle = '#000'; ctx.fillRect(e.x - 3.5, e.y - .8, 7, 1.6);
