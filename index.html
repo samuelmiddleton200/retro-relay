@@ -1196,17 +1196,24 @@ const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].f
    drawn long enough for that, and a runner's place on a bend is worked out by distance along it, not by angle.
    The camera slides along with your runner on the straights and sits still while he's on a bend (user).
    Nothing here decides anything: the times were set when you pressed Race. */
-const CH = 180, SS = 6, LS = 300, RX0 = 128, RY0 = 30, WX = 5.5, WY = 7, LANES = 6, PAD = 12;
-const RXO = RX0 + LANES * WX, RYO = RY0 + LANES * WY, XL = PAD + RXO, XR = XL + LS, CY = 106, WORLD_W = XR + RXO + PAD;
+const CH = 180, SS = 6, LS = 300, RX0 = 124, RY0 = 34, LW = 6, LANES = 6, PAD = 12;   // LW: every lane is the same width all the way round, bends and straights (user)
+const RXO = RX0 + LANES * LW, RYO = RY0 + LANES * LW, XL = PAD + RXO, XR = XL + LS, CY = 106, WORLD_W = XR + RXO + PAD;
 const LANE_M = 7.5;                                                   // metres a lap gains per lane out
 let CW = 320, cam = 0, R = null, raf = 0, lastT = 0, trackCv = null;
 const cv = $('#court'), ctx = cv.getContext('2d');
-// the angle round a bend (0 to pi) that is the fraction s of the way along it, measured on the screen
+// The inside edge of the track's bend is half an oval; every lane line is that edge moved straight outward by whole
+// lane widths, so a lane is exactly as wide on the bend as on the straight. bendPt: the point at angle a (0 to pi)
+// round the bend, `off` pixels out from the inside edge.
+function bendPt(a, off){
+  const nx = RY0 * Math.sin(a), ny = RX0 * Math.cos(a), n = Math.hypot(nx, ny);
+  return [RX0 * Math.sin(a) + off * nx / n, RY0 * Math.cos(a) + off * ny / n];
+}
+// the angle that is the fraction s of the way along that line, measured on the screen
 const arcCache = {};
-function arcAngle(rx, ry, s){
-  const key = Math.round(rx * 4) + '|' + Math.round(ry * 4);
+function arcAngle(off, s){
+  const key = Math.round(off * 8);
   let t = arcCache[key];
-  if (!t) { const N = 96; t = [0]; let px = 0, py = ry; for (let i = 1; i <= N; i++) { const a = Math.PI * i / N, x = rx * Math.sin(a), y = ry * Math.cos(a); t[i] = t[i - 1] + Math.hypot(x - px, y - py); px = x; py = y; } arcCache[key] = t; }
+  if (!t) { const N = 128; t = [0]; let p = bendPt(0, off); for (let i = 1; i <= N; i++) { const q = bendPt(Math.PI * i / N, off); t[i] = t[i - 1] + Math.hypot(q[0] - p[0], q[1] - p[1]); p = q; } arcCache[key] = t; }
   const N = t.length - 1, want = clamp(s, 0, 1) * t[N];
   let lo = 0, hi = N; while (hi - lo > 1) { const m = (lo + hi) >> 1; t[m] <= want ? lo = m : hi = m; }
   return Math.PI * (lo + (want - t[lo]) / (t[hi] - t[lo] || 1)) / N;
@@ -1215,11 +1222,11 @@ function arcAngle(rx, ry, s){
 // (on the right), the back straight (running left), the second bend and the home straight up to the finish line
 function lanePos(k, u){
   u = ((u % 1) + 1) % 1;
-  const rx = RX0 + (k + .5) * WX, ry = RY0 + (k + .5) * WY, q = Math.floor(u * 4), s = u * 4 - q;
-  if (q === 0) { const a = arcAngle(rx, ry, s); return { x:XR + rx * Math.sin(a), y:CY + ry * Math.cos(a), dx:Math.cos(a) }; }
-  if (q === 1) return { x:XR - LS * s, y:CY - ry, dx:-1 };
-  if (q === 2) { const a = arcAngle(rx, ry, s); return { x:XL - rx * Math.sin(a), y:CY - ry * Math.cos(a), dx:-Math.cos(a) }; }
-  return { x:XL + LS * s, y:CY + ry, dx:1 };
+  const off = (k + .5) * LW, q = Math.floor(u * 4), s = u * 4 - q;
+  if (q === 0) { const a = arcAngle(off, s), p = bendPt(a, off); return { x:XR + p[0], y:CY + p[1], dx:Math.cos(a) }; }
+  if (q === 1) return { x:XR - LS * s, y:CY - RY0 - off, dx:-1 };
+  if (q === 2) { const a = arcAngle(off, s), p = bendPt(a, off); return { x:XL - p[0], y:CY - p[1], dx:-Math.cos(a) }; }
+  return { x:XL + LS * s, y:CY + RY0 + off, dx:1 };
 }
 // metres from the finish line along lane k, as a fraction of the way round
 function uOf(k, d){
@@ -1229,9 +1236,13 @@ function uOf(k, d){
   if (d < B) return (2 + d / B) / 4;
   return Math.min(.99999, (3 + (d - B) / 100) / 4);
 }
-function ovalPath(g, rx, ry){
-  g.beginPath(); g.moveTo(XL, CY + ry); g.lineTo(XR, CY + ry); g.ellipse(XR, CY, rx, ry, 0, Math.PI / 2, -Math.PI / 2, true);
-  g.lineTo(XL, CY - ry); g.ellipse(XL, CY, rx, ry, 0, -Math.PI / 2, Math.PI / 2, true); g.closePath();
+// the outline `off` pixels out from the inside edge of the track
+function ovalPath(g, off){
+  const N = 72;
+  g.beginPath(); g.moveTo(XL, CY + RY0 + off);
+  for (let i = 0; i <= N; i++) { const p = bendPt(Math.PI * i / N, off); g.lineTo(XR + p[0], CY + p[1]); }
+  for (let i = 0; i <= N; i++) { const p = bendPt(Math.PI * i / N, off); g.lineTo(XL - p[0], CY - p[1]); }
+  g.closePath();
 }
 function buildTrack(title, ev){
   const c = document.createElement('canvas'); c.width = WORLD_W * SS; c.height = CH * SS;
@@ -1244,12 +1255,12 @@ function buildTrack(title, ev){
   for (let y = 3; y < 26; y += 4) for (let x = (y % 8 ? 1 : 3); x < WORLD_W; x += 4) if (Math.random() < .82) { g.fillStyle = pick(crowd); g.fillRect(x, y, 2, 2); }
   g.fillStyle = '#c9ccd6'; g.fillRect(0, 30, WORLD_W, 1);
   // the track: clay with white lane lines (user)
-  ovalPath(g, RXO + 2, RYO + 2); g.fillStyle = '#8f3f25'; g.fill();
-  ovalPath(g, RXO, RYO); g.fillStyle = '#c9613f'; g.fill();
-  g.strokeStyle = '#ffffff'; g.lineWidth = .6;
-  for (let j = 0; j <= LANES; j++) { ovalPath(g, RX0 + j * WX, RY0 + j * WY); g.stroke(); }
-  ovalPath(g, RX0 - .3, RY0 - .3); g.fillStyle = '#4aa856'; g.fill();
-  g.save(); ovalPath(g, RX0 - .3, RY0 - .3); g.clip();
+  ovalPath(g, LANES * LW + 2); g.fillStyle = '#8f3f25'; g.fill();
+  ovalPath(g, LANES * LW); g.fillStyle = '#c9613f'; g.fill();
+  ovalPath(g, -.35); g.fillStyle = '#4aa856'; g.fill();
+  g.strokeStyle = '#ffffff'; g.lineWidth = .7; g.lineJoin = 'round';
+  for (let j = 0; j <= LANES; j++) { ovalPath(g, j * LW); g.stroke(); }
+  g.save(); ovalPath(g, -.35); g.clip();
   for (let x = XL - RX0; x < XR + RX0; x += 40) { g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(x, CY - RY0, 20, RY0 * 2); }
   g.restore();
   const tw = title.length * 8 - 2; pxText(g, title, Math.round((XL + XR) / 2 - tw / 2), CY - 5, 'rgba(255,255,255,.55)', 2);
@@ -1262,7 +1273,7 @@ function buildTrack(title, ev){
   // the exchange zones: a yellow line where the next man waits and another 20 m on (the baton changes hands about 15 m in)
   for (let i = 1; i < 4; i++) { const m = i * ev.leg, lanes = ev.leg === 100 || m <= 400;
     for (let k = 0; k < LANES; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, LANE_M * k + m + add) : uOf(0, m - 400 + add), '#ffd23f', .9); } }
-  for (let k = 0; k < LANES; k++) pxText(g, String(k + 1), XR - 7, Math.round(CY + RY0 + (k + .5) * WY - 2), 'rgba(255,255,255,.8)');
+  for (let k = 0; k < LANES; k++) pxText(g, String(k + 1), XR - 7, Math.round(CY + RY0 + (k + .5) * LW - 2), 'rgba(255,255,255,.8)');
   return c;
 }
 function fit(){
