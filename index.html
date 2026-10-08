@@ -1191,8 +1191,8 @@ const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].f
    A standard 400 m track seen from the home-straight side: two 100 m straights and two 100 m bends in lane 1, and every
    lane out is 7.5 m longer per lap (user), all of it in the bends. So races start staggered: lane 1 on the line, lane 2
    7.5 m round the first bend, lane 6 37.5 m round it. The 4x100 stays in lanes all the way. So does the 4x200 (user),
-   which is two laps, so its stagger is 15 m a lane. In the 4x400 the first lap is in lanes and after it everyone runs
-   in lane 1 (user).
+   which is two laps, so its stagger is 15 m a lane. The 4x400 has the same 15 m stagger: two laps in lanes, then the
+   exchanges are in lanes 1 to 3 and everyone runs in lane 1 (user).
    Runners cover the same number of screen pixels per metre on the bends as on the straights (user): the bends are
    drawn long enough for that, and a runner's place on a bend is worked out by distance along it, not by angle.
    The camera slides along with your runner on the straights and sits still while he's on a bend (user).
@@ -1200,7 +1200,7 @@ const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].f
 const CH = 180, SS = 6, LS = 300, RX0 = 124, RY0 = 34, LW = 6, LANES = 6, PAD = 12;   // LW: every lane is the same width all the way round, bends and straights (user)
 const RXO = RX0 + LANES * LW, RYO = RY0 + LANES * LW, XL = PAD + RXO, XR = XL + LS, CY = 106, WORLD_W = XR + RXO + PAD;
 const LANE_M = 7.5;                                                   // metres a lap gains per lane out
-const stagger = ev => LANE_M * (ev.leg === 200 ? 2 : 1);              // head start per lane out: one lap run in lanes, two in the 4x200
+const stagger = ev => LANE_M * (ev.leg === 100 ? 1 : 2);              // head start per lane out: the 4x100 is one lap in lanes; the 4x200 and 4x400 run two laps in lanes (user)
 let CW = 320, cam = 0, R = null, raf = 0, lastT = 0, trackCv = null;
 const cv = $('#court'), ctx = cv.getContext('2d');
 // The inside edge of the track's bend is half an oval; every lane line is that edge moved straight outward by whole
@@ -1274,7 +1274,7 @@ function buildTrack(title, ev){
   const ST = stagger(ev);
   for (let k = 1; k < LANES; k++) tick(k, uOf(k, ST * k), '#ffffff', 1.2);
   // the exchange zones: a yellow line where the next man waits and another 20 m on (the baton changes hands about 15 m in)
-  for (let i = 1; i < 4; i++) { const m = i * ev.leg, lanes = ev.leg !== 400 || m <= 400;
+  for (let i = 1; i < 4; i++) { const m = i * ev.leg, lanes = ev.leg !== 400 || m < 800;
     for (let k = 0; k < LANES; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, ST * k + m + add) : uOf(0, m - 400 + add), '#ffd23f', .9); } }
   for (let k = 0; k < LANES; k++) pxText(g, String(k + 1), XR - 7, Math.round(CY + RY0 + (k + .5) * LW - 2), 'rgba(255,255,255,.8)');
   return c;
@@ -1330,17 +1330,19 @@ function runnerAt(tm, i, T){
 }
 const smooth = v => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 // a point on the screen for man i at m metres raced. 4x100 and 4x200: his own lane all the way. 4x400: his own lane
-// for the first lap, then lane 1, cutting in and out over about 30 m around each exchange: the first one (after lap 1)
-// is out in his team's lane, the other two are in lanes 1 to 3
+// for the first two laps (so the first exchange is in lanes), then lane 1; the exchanges after laps 2 and 3 are in
+// lanes 1 to 3 and he cuts in and out over about 30 m around them
 function place(tm, i, m){
   const K = tm.lane;
-  if (R.ev.leg !== 400 || tm.a[i] < 400) return lanePos(K, uOf(K, stagger(R.ev) * K + m));
+  if (R.ev.leg !== 400) return lanePos(K, uOf(K, stagger(R.ev) * K + m));
+  // the first two laps are in lanes; the second man moves across to his exchange lane up the last of the home straight
+  if (i < 2 && m < 800) return lanePos(i ? K + (tm.xl[2] - K) * smooth((m - 765) / 30) : K, uOf(K, stagger(R.ev) * K + m));
   const inside = K * .2;                                              // the pack fans out a little so they don't run through each other
-  const from = i >= 2 ? tm.xl[i] : K, to = i < 3 ? tm.xl[i + 1] : 0;   // the lane he takes the baton in, and the one he gives it in
-  let lat = from + (inside - from) * smooth((m - tm.a[i] - 5) / 30);
-  if (i < 3) lat += (to - lat) * smooth((m - (tm.b[i] - 45)) / 30);
-  // these exchanges are at the start of a bend, out in the team's lane, where a metre covers less of the bend than it
-  // does in lane 1: count it that way through the exchange so the two men stay the right distance apart
+  const from = tm.xl[Math.max(i, 2)], to = i < 3 ? tm.xl[i + 1] : 0;   // the lane he takes the baton in, and the one he gives it in
+  let lat = i < 2 ? from : from + (inside - from) * smooth((m - tm.a[i] - 5) / 30);
+  if (i === 2) lat += (to - lat) * smooth((m - (tm.b[i] - 45)) / 30);
+  // these exchanges are at the start of a bend, out in lane 2 or 3 for some, where a metre covers less of the bend than
+  // it does in lane 1: count it that way through the exchange so the two men stay the right distance apart
   const wide = Math.max(1 - smooth((m - tm.a[i]) / 40), i < 3 && m >= tm.b[i] - ZONE ? 1 : 0);
   const d = (((m - 400) % 400) + 400) % 400, q = Math.floor(d / 100);
   let f = d / 100 - q; if (q % 2 === 0) f *= 1 - wide + wide * 100 / (100 + LANE_M / 2 * lat);
