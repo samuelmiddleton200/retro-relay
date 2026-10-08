@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- no zooming; the game fills the screen -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- opened from the home screen: no Safari bars, black status bar -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- black-translucent: the page always runs under the status bar area, so iOS has no bar-sized strip to
+     leave behind when the app opens sideways (the game already keeps clear of the notch itself) -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Retro Relay">
+<meta name="theme-color" content="#3d140b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+  html,body{overscroll-behavior:none;touch-action:manipulation;-webkit-text-size-adjust:100%}   /* no bounce, no double-tap zoom */
+  /* like an app: the page itself never moves; long menus scroll inside the game area.
+     The page is pinned to the screen (position:fixed) so it cannot sit scrolled or pushed off to one side, and its
+     height comes from --app-h, the size the script below measures, because an iPhone opened sideways sometimes
+     hands the page a stale size or offset for a moment (the "whole screen shifted over" launch). */
+  html,body{position:fixed;left:0;top:0;width:100%;height:100%;height:var(--app-h,100%);overflow:hidden}
+  #ui{height:100%;height:100dvh;height:var(--app-h,100dvh);min-height:0 !important;overflow:hidden;overscroll-behavior:none}
+  #game{height:var(--app-h,100%);bottom:auto !important}
+  /* the stats list is the only screen allowed to scroll, and only up and down */
+  #ui[data-screen="leaders"]{overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+</style>
+<script>
+  // Launch guard for the shifted screen: measure the real screen, pin the page to it, put the page back at 0,0,
+  // and if the iPhone is still reporting a stale size make it measure again. Runs at launch, a few more times in
+  // the first seconds, and whenever the app comes back, rotates or resizes. It never reloads the app.
+  (function(){
+    var root = document.documentElement, nudges = 0, last = '';
+    var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var standalone = function(){ return navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches); };
+    var angle = function(){ var a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : window.orientation; return typeof a === 'number' ? Math.abs(a) % 180 : null; };
+    // what the screen really is: on an iPhone home-screen app that is the whole display, turned the way the phone is held
+    function real(){
+      var w = window.innerWidth, h = window.innerHeight, a = angle();
+      if (ios && standalone() && a !== null && screen.width && screen.height) {
+        var long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
+        var ew = a === 90 ? long : short, eh = a === 90 ? short : long;
+        // only a big gap is a stale size (the page still thinks the phone is the other way up); small gaps are real bars
+        if (Math.abs(w - ew) > 60 || Math.abs(h - eh) > 60) return { w:ew, h:eh, stale:true };
+      }
+      return { w:w, h:h, stale:false };
+    }
+    function settle(){
+      try {
+        var r = real(), vv = window.visualViewport;
+        root.style.setProperty('--app-h', r.h + 'px');
+        var moved = window.scrollX || window.scrollY || root.scrollTop || (document.body && document.body.scrollTop) || (vv && (vv.offsetTop || vv.offsetLeft || vv.pageTop || vv.pageLeft));
+        if (moved) { window.scrollTo(0, 0); root.scrollTop = 0; if (document.body) document.body.scrollTop = 0; }
+        if ((r.stale || moved) && nudges < 6) {                      // make the iPhone lay the page out again
+          nudges++;
+          var m = document.querySelector('meta[name=viewport]'), c = m && m.getAttribute('content');
+          if (m) { m.setAttribute('content', c + ', height=device-height'); setTimeout(function(){ m.setAttribute('content', c); }, 60); }
+        }
+        var key = r.w + 'x' + r.h + (r.stale ? 's' : '') + (moved ? 'm' : '');
+        if (key !== last) { last = key; setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 80); }   // the game re-fits its court
+      } catch (e) {}
+    }
+    try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
+    settle();
+    [0, 60, 150, 300, 600, 1000, 1600, 2500, 4000].forEach(function(ms){ setTimeout(settle, ms); });
+    ['DOMContentLoaded', 'load', 'pageshow', 'resize', 'orientationchange', 'focus'].forEach(function(ev){ window.addEventListener(ev, function(){ settle(); setTimeout(settle, 250); setTimeout(settle, 700); }); });
+    document.addEventListener('visibilitychange', function(){ if (!document.hidden) { nudges = 0; settle(); setTimeout(settle, 250); setTimeout(settle, 700); } });
+    if (window.visualViewport) { visualViewport.addEventListener('resize', settle); visualViewport.addEventListener('scroll', settle); }
+  })();
+</script>
+<script>
+  // No surprise updates: the app never reloads itself. A new version (only when we publish one) shows the
+  // next time the app is closed and opened again, because the game loads fresh from the server at launch.
+  if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache:'none' }).catch(() => {}));
+</script>
+<title>Retro Relay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Silkscreen:wght@400;700&family=Roboto+Mono:wght@500;700&display=swap">
+<style>
+:root{
+  --blue:#a8452f; --blue-d:#8a3523; --blue-dd:#6b2618; --navy:#3d140b;
+  --white:#ffffff; --yellow:#ffd23f; --yellow-d:#c99a12; --red:#e24b3b; --green:#44c45d; --gray:#4d525e; --gray-d:#383c46;
+  --px:"Silkscreen","Courier New",monospace;
+  --numf:"Roboto Mono",ui-monospace,Consolas,monospace;
+  --body:"Pixelify Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--blue);color:var(--white);height:100%}
+body{margin:0;font:15px/1.3 var(--body);overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+.px{font-family:var(--px)}
+#ui{max-width:980px;margin:0 auto;padding-inline:16px;padding-block:10px 16px;min-height:100%}
+
+/* --- chrome --- */
+.bar{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-bottom:10px}
+.box{border:3px solid var(--white);border-radius:6px;background:var(--blue-dd);padding:4px 10px;font-family:var(--px);font-weight:700;font-size:14px;white-space:nowrap}
+.title{font-family:var(--px);font-weight:700;font-size:clamp(18px,3.4vw,28px);text-align:center;text-transform:uppercase;letter-spacing:.02em;line-height:1.05;text-shadow:0 3px 0 var(--navy)}
+.title .st{color:var(--yellow);font-size:.7em;vertical-align:.12em;letter-spacing:0}
+.btn{font-family:var(--px);font-weight:700;text-transform:uppercase;border:3px solid var(--white);border-radius:6px;background:var(--blue-dd);padding:9px 14px;font-size:14px;letter-spacing:.03em;box-shadow:0 4px 0 var(--navy)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--navy)}
+.btn.go{background:var(--yellow);color:#241a00;border-color:#fff3b8}
+.btn.red{background:var(--red)}
+.btn.green{background:var(--green);color:#082010}
+.btn.sm{padding:5px 9px;font-size:12px;border-width:2px}
+.btn:disabled{opacity:.4;pointer-events:none}
+.icon{width:40px;height:36px;padding:0;display:grid;place-items:center;font-size:18px}
+.panel{border:3px solid var(--white);border-radius:6px;background:var(--blue-d);padding:10px 12px}
+.label{font-family:var(--px);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#ffe0d2}
+.row{display:flex;align-items:center;gap:10px}
+.between{justify-content:space-between}
+.grow{flex:1;min-width:0}
+.stack{display:grid;gap:10px}
+.muted{color:#ffe0d2}
+.yellow{color:var(--yellow)} .good{color:#7dff95} .bad{color:#ffb3aa}
+.debt{color:#ff5e4f !important}                                                  /* cash below zero */
+/* numbers use a plain monospace: the pixel fonts' 5 reads as S and 0 as O */
+.num,.sal,.card .age{font-family:var(--numf);font-variant-numeric:tabular-nums;font-weight:700;letter-spacing:0}
+.stars{color:var(--yellow);letter-spacing:1px;text-shadow:1px 1px 0 #6b4a00}
+.stars .off{color:#8c93a3;text-shadow:none}
+.stars .half{position:relative;display:inline-block;color:#8c93a3;text-shadow:none}
+.stars .half::before{content:'★';position:absolute;left:0;top:0;width:50%;overflow:hidden;color:var(--yellow);text-shadow:1px 1px 0 #6b4a00}
+
+/* --- hub --- */
+.hub{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px}
+.menu{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
+.menu .btn{padding:14px 6px}
+.chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.chip{border:3px solid var(--white);border-radius:6px;background:var(--blue-dd);padding:5px 6px;text-align:center}
+.chip b{display:block;font-family:var(--px);font-size:14px}
+.vs{display:flex;align-items:center;justify-content:space-around;gap:6px;margin:6px 0 10px;text-align:center}
+.vs .t{display:grid;justify-items:center;gap:3px}
+.vs .n{font-family:var(--px);font-size:12px;text-transform:uppercase}
+.badge{width:46px;height:46px;border-radius:6px;display:grid;place-items:center;font-family:var(--px);font-weight:700;font-size:13px;border:3px solid;box-shadow:inset 0 -4px 0 rgba(0,0,0,.25)}
+.badge.sm{width:28px;height:28px;font-size:9px;border-width:2px}
+
+/* --- cards --- */
+.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.card{border:3px solid var(--white);border-radius:6px;overflow:hidden;background:var(--gray);padding:0;text-align:center;box-shadow:0 4px 0 var(--navy);position:relative}
+.card:active{transform:translateY(2px)}
+.card .top{height:62px;position:relative;display:flex;align-items:flex-end;justify-content:center}
+.card .top img{width:56px;height:56px;image-rendering:pixelated}
+.card .pos{position:absolute;left:4px;top:3px;font-family:var(--px);font-weight:700;font-size:12px;text-shadow:1px 1px 0 rgba(0,0,0,.4)}
+.card .age{position:absolute;right:4px;top:4px;font-family:var(--px);font-size:10px;background:rgba(0,0,0,.3);border-radius:3px;padding:1px 3px}
+.card .bot{padding:4px 3px 5px;border-top:3px solid var(--white)}
+.card .nm{font-family:var(--px);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .fa-x{display:grid;gap:1px;margin-top:4px;font-size:12px;line-height:1.3}
+.card .fa-x div{display:flex;justify-content:space-between;gap:4px;white-space:nowrap}
+.card .fa-x span{color:#ffe0d2}
+.card .fa-x b{color:var(--white);font-size:12px}
+.card .fa-x .sh{display:none}                                       /* short labels, for narrow phone cards */
+.card .fnm{font-family:var(--px);font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .sal{font-family:var(--px);font-size:12px}
+.card.dim{opacity:.45}
+.card .flag{position:absolute;inset:auto 0 0 0;background:var(--red);font-family:var(--px);font-size:10px;padding:2px}
+.card:has(.flag) .bot{padding-bottom:22px}                          /* keep the flag from covering the last line */
+.pc-HN,.pc-PO{background:#5eb4f0}.pc-CT,.pc-WG{background:#58c98a}.pc-DP{background:#e8604f}
+
+.capbar{display:flex;align-items:center;gap:10px;margin-top:10px}
+.cap{flex:1;border:3px solid var(--white);border-radius:6px;background:var(--navy);padding:4px 8px}
+.cap .t{font-family:var(--px);font-size:11px;text-align:center;margin-bottom:3px}
+.cap .track{height:14px;background:#000;border:2px solid #000}
+.cap .track i{display:block;height:100%;background:var(--yellow)}
+
+/* --- player page --- */
+.pp{display:grid;grid-template-columns:170px minmax(0,1fr);gap:14px}
+.pp .face{border:3px solid var(--white);border-radius:6px;overflow:hidden;background:var(--gray)}
+.pp .face .top{height:120px;display:flex;align-items:flex-end;justify-content:center}
+.pp .face img{width:112px;height:112px;image-rendering:pixelated}
+.pp .face .bot{padding:6px;border-top:3px solid var(--white);text-align:center}
+.rt{display:grid;grid-template-columns:92px minmax(0,1fr) 40px auto;align-items:center;gap:8px;margin-bottom:8px}
+.rt .nm{font-family:var(--px);font-size:12px}
+.posdesc{font-size:13px;line-height:1.25;color:#ffe0d2}.posdesc b{color:#fff}
+.segs{display:grid;grid-template-columns:repeat(10,1fr);gap:2px}
+.segs i{height:14px;background:var(--navy);border-radius:1px}
+.segs i.on{background:var(--yellow)}
+.segs i.pot{background:#5a6a9a}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-family:var(--px);font-size:10px;color:#ffe0d2;text-align:right;padding:4px;font-weight:400}
+td{padding:5px 4px;text-align:right;border-top:2px solid rgba(255,255,255,.15)}
+th:first-child,td:first-child{text-align:left}
+tr.me td{color:var(--yellow)}
+tr.cut td{border-top:2px dashed var(--yellow)}
+.brk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;height:min(68vh,430px);padding:6px 8px}
+.bcol{display:flex;flex-direction:column;min-width:0}
+.bh{font-family:var(--px);font-size:9px;color:#ffe0d2;text-align:center;white-space:nowrap;margin-bottom:3px}
+.bms{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:3px;min-height:0}
+.bpi .bms{justify-content:space-between}
+.bm{background:rgba(0,0,0,.22);border:2px solid rgba(255,255,255,.22);border-radius:6px;font-size:13px;line-height:1.2;padding:1px 5px}
+.bm div{display:flex;gap:5px;white-space:nowrap;overflow:hidden}
+.bm .sd{opacity:.65;min-width:1.3em;text-align:right}
+.bm .w{font-weight:700}.bm .l{opacity:.4}.bm .me{color:var(--yellow)}.bm .tbd{opacity:.4}
+.bfin .bm{border-color:var(--yellow)}
+.bchamp{text-align:center;font-family:var(--px);font-size:11px}
+.bcap{font-family:var(--px);font-size:8px;color:#ffe0d2;text-align:center;margin-bottom:2px}
+
+.sheet-bg{position:fixed;inset:0;background:rgba(30,8,4,.6);z-index:40}
+.sheet{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;width:min(460px,calc(100% - 32px));max-height:calc(100% - 24px);overflow:auto;border:3px solid var(--white);border-radius:8px;background:var(--blue-d);padding:14px;box-shadow:0 6px 0 var(--navy)}
+.sheet .inner{display:grid;gap:10px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:60;background:var(--yellow);color:#241a00;font-family:var(--px);font-size:12px;padding:8px 12px;border-radius:4px;border:2px solid #fff;max-width:calc(100% - 32px);text-align:center}
+input[type=text]{width:100%;background:var(--navy);border:3px solid var(--white);border-radius:6px;padding:8px;font:16px var(--body);color:#fff}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.sw{width:38px;height:38px;border-radius:4px;border:3px solid transparent;padding:0}
+.sw.on{border-color:#fff}
+
+/* --- game --- */
+#game{position:fixed;inset:0;background:#0b1433;z-index:30;display:flex;align-items:center;justify-content:center}
+#game[hidden]{display:none}
+.stage{position:relative}
+#court{display:block;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none}
+.hud{position:absolute;left:0;right:0;top:0;display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.sb{display:flex;align-items:stretch;border:3px solid #fff;border-top:0;border-radius:0 0 10px 10px;background:#0b1433;font-family:var(--px);font-weight:700;overflow:hidden;box-shadow:0 4px 0 rgba(0,0,0,.55)}
+.sb .tm{display:flex;align-items:center;gap:8px;padding:4px 10px 5px;min-width:112px;position:relative;box-shadow:inset 0 -4px 0 rgba(0,0,0,.25)}
+.sb .tm.r{justify-content:flex-end}
+.sb .ab{font-size:15px;letter-spacing:.04em;text-shadow:0 2px 0 rgba(0,0,0,.45)}
+.sb .sc{font-size:28px;line-height:1;min-width:38px;text-align:center;color:#fff;text-shadow:0 3px 0 rgba(0,0,0,.5)}
+.sb .poss{width:8px;height:10px}
+.sb .poss.on{background:var(--yellow);clip-path:polygon(0 50%,100% 0,100% 100%)}
+.sb .tm.r .poss.on{clip-path:polygon(0 0,100% 50%,0 100%)}
+.sb .mid{display:grid;place-items:center;align-content:center;padding:2px 12px;border-inline:3px solid #fff;min-width:78px;background:#0b1433;line-height:1.05}
+.sb .q{font-size:9px;color:var(--yellow);letter-spacing:1px;white-space:nowrap}
+.sb .rd{font-size:8px;color:#fff;letter-spacing:1px;white-space:nowrap}.sb .rd[hidden]{display:none}
+.champ{position:relative;display:grid;justify-items:center;align-content:center;gap:8px;text-align:center;min-height:min(72vh,440px);overflow:hidden}
+.champ .cup{font-size:76px;line-height:1;filter:drop-shadow(0 5px 0 rgba(0,0,0,.4));animation:cupin .7s cubic-bezier(.2,1.5,.4,1) both}
+.champ h2{font-family:var(--px);font-size:30px;margin:0;color:var(--yellow);text-shadow:0 3px 0 #000}
+.champ .cf{position:absolute;top:-12px;width:7px;height:11px;animation:cfall linear infinite;pointer-events:none}
+.champ > :not(.cf){position:relative;z-index:1}
+@keyframes cfall{to{transform:translateY(480px) rotate(540deg)}}
+@keyframes cupin{from{transform:scale(.2) rotate(-20deg);opacity:0}}
+@media (max-height:500px){.champ{min-height:calc(100vh - 78px);gap:4px}.champ .cup{font-size:54px}.champ h2{font-size:22px}}
+.sb .clk{font-size:19px;color:#fff}
+.shotbox{margin-top:-1px;border:3px solid #fff;border-top:0;border-radius:0 0 6px 6px;background:#1a0d0d;color:#ff5a3c;font-family:var(--px);font-weight:700;font-size:15px;padding:0 10px 2px;min-width:44px;text-align:center;text-shadow:0 0 6px rgba(255,90,60,.6);box-shadow:0 3px 0 rgba(0,0,0,.5)}
+.shotbox:empty{display:none}
+.gbtn{position:absolute;top:6px;right:6px;pointer-events:auto}
+.banner{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);font-family:var(--px);font-weight:700;font-size:26px;text-shadow:0 3px 0 #000,0 0 14px rgba(0,0,0,.6);text-align:center;pointer-events:none;white-space:nowrap}
+.banner small.big{font-size:30px;color:#fff;margin-top:6px}
+.banner small{display:block;font-size:13px;color:var(--yellow);margin-top:4px}
+/* Shot meter: a slim bar sitting right above the SHOOT button (between it and the basket we attack), so the
+   thumb and the eyes are in the same corner. The other team's meter mirrors it bottom-left, by their basket.
+   --sb: button size, --sb-r / --sb-b: button's right and bottom offsets, --mw / --mh: meter size. */
+:root{--sb:138px;--sb-r:calc(12px + env(safe-area-inset-right) * .7);--sb-l:calc(12px + env(safe-area-inset-left) * .7);--sb-b:calc(12px + env(safe-area-inset-bottom) * .5);--mw:14px;--mh:150px}
+.meter{position:absolute;right:calc(var(--sb-r) + (var(--sb) - var(--mw)) / 2);bottom:calc(var(--sb-b) + var(--sb) + 12px);width:var(--mw);height:var(--mh);border:2px solid #fff;border-radius:4px;background:#0b1433;pointer-events:none;box-shadow:0 2px 0 #000;overflow:visible}
+.meter i{position:absolute;left:0;right:0;bottom:0;height:0;border-radius:2px}
+.meter .pct{position:absolute;right:calc(var(--mw) + 8px);bottom:-3px;font-family:var(--numf);font-weight:700;font-size:12px;text-shadow:0 2px 0 #000;white-space:nowrap}
+.meter.right{right:auto;left:calc(var(--sb-l) + (var(--sb) - var(--mw)) / 2)}
+.stats[hidden]{display:none}
+.stats{position:absolute;inset:0;display:grid;place-items:center;background:rgba(8,14,40,.55);z-index:5}
+.st-card{border:3px solid #fff;border-radius:8px;background:var(--blue-d);padding:10px 16px 12px;box-shadow:0 5px 0 var(--navy);width:min(430px,92%);display:grid;gap:6px;text-align:center}
+.st-title{font-family:var(--px);font-weight:700;font-size:22px;text-shadow:0 3px 0 var(--navy)}
+.st-span{font-family:var(--px);font-size:11px;color:var(--yellow);margin-top:-4px}
+.st-score{display:flex;align-items:center;justify-content:center;gap:10px;font-family:var(--px);font-weight:700}
+.st-team{border:3px solid #fff;border-radius:5px;padding:2px 8px;font-size:14px}
+.st-num{font-size:26px;min-width:40px}
+.st-dash{color:#ffe0d2}
+.st-table{width:100%;border-collapse:collapse;font-size:15px}
+.st-table th{font-family:var(--px);font-size:11px;color:#ffe0d2;text-align:center;font-weight:400;padding:4px 6px;border-top:2px solid rgba(255,255,255,.15)}
+.st-table td{padding:4px 6px;border-top:2px solid rgba(255,255,255,.15);font-variant-numeric:tabular-nums;font-family:var(--px);font-size:13px}
+.st-table td.u{text-align:left}.st-table td.v{text-align:right}
+.st-table .pc{color:#ffe0d2;font-size:11px}
+.meter.right .pct{right:auto;left:calc(var(--mw) + 8px)}
+.kitp{display:grid;gap:8px;justify-items:center}
+.kitp .row{width:100%}
+.kitimg{width:112px;height:auto;image-rendering:pixelated;background:#d49a5c;border:3px solid #fff;border-radius:6px;padding:6px 10px}
+.kitrow{display:flex;align-items:center;gap:8px;width:100%;justify-content:space-between}
+.seg{display:flex;gap:6px}
+.lfilt{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.lfilt select{font:700 13px var(--px);color:var(--white);background:var(--blue-dd);border:3px solid var(--white);border-radius:6px;padding:6px 8px}
+.lt{font-size:13px}.lt td,.lt th{white-space:nowrap}
+.lt th button{all:unset;cursor:pointer;padding:2px 3px;border-radius:3px}
+.lt th button.on{background:var(--yellow);color:#241a00}
+.lt td.nm2{text-align:left;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.lt td.tm{text-align:left;font-family:var(--px);font-size:11px}
+.lt td.sorted{color:var(--yellow);font-weight:700}
+.lt .zero td{color:#9fb3e0}
+.pst{font-size:13px}.pst td,.pst th{white-space:nowrap}.pst td:first-child{font-family:var(--px);font-size:11px;text-align:left}
+.tgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.tpick{display:flex;align-items:center;gap:6px;border:2px solid rgba(255,255,255,.25);border-radius:6px;background:var(--blue-dd);padding:5px 6px;text-align:left}
+.tpick.on{border-color:var(--yellow);box-shadow:0 0 0 2px var(--yellow)}
+.tpick .tn{font-size:11px;line-height:1.15}.tpick .tn b{font-family:var(--px);font-size:10px}
+.shootbtn{position:absolute;right:12px;bottom:12px;width:138px;height:138px;border-radius:50%;font-size:20px;padding:0;touch-action:none;-webkit-touch-callout:none;z-index:4}
+.shootbtn:active{transform:translateY(3px)}
+.shotbox:empty{display:none}
+.shootbtn.dunk{background:#ff5a3c;color:#fff;border-color:#fff}
+.tip{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(4px + env(safe-area-inset-bottom));font-family:var(--px);font-size:10px;text-align:center;color:#fff;text-shadow:0 2px 0 #000;pointer-events:none;max-width:60%}
+
+/* money outlook (front office) */
+.fac-list{display:grid;gap:10px}.fshort{font-size:13px;color:#ffe0d2}
+.outlook .tipline{font-size:12px;line-height:1.3;margin-top:5px;padding-left:10px;position:relative}
+.outlook .tipline::before{content:'';position:absolute;left:0;top:5px;width:5px;height:5px;border-radius:50%;background:var(--yellow)}
+/* save slots */
+.slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:820px;margin:0 auto}
+.slot{display:grid;gap:8px;align-content:start}
+.slot-team{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot-empty{font-family:var(--px);font-size:16px;text-align:center;padding:22px 0}
+.slot-meta{display:flex;justify-content:space-between;gap:6px;font-size:12px;color:#ffe0d2}
+/* free agents: tabs by position, one row of cards */
+.fatabs{gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.cards.farow{grid-template-columns:repeat(var(--n),minmax(0,1fr))}
+/* post-game: result | money | fans + continue */
+.post3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,.9fr);gap:12px;align-items:start}
+
+/* Edge to edge on notched phones: backgrounds and the court run under the notch; buttons and text stay
+   clear of it (env() is 0 on computers, so nothing changes there). The notch is only ~30pt deep. */
+/* --side-*: the side margin menus use; the game uses the same (--game-side-*) so the court is exactly as wide as
+   the menus. Computers keep 16px menus and a full-width game; phones get the notch-aware margin plus 2.5% a side. */
+:root{--side-l:16px;--side-r:16px;--game-side-l:0px;--game-side-r:0px}
+#ui{padding-left:var(--side-l);padding-right:var(--side-r)}
+#game{padding-left:var(--game-side-l);padding-right:var(--game-side-r);box-sizing:border-box}
+/* the court runs under the notch, but the buttons and meters on top of it stay clear of it */
+.shootbtn{width:var(--sb);height:var(--sb);right:var(--sb-r);bottom:var(--sb-b)}
+.gbtn{right:calc(6px + env(safe-area-inset-right) * .7)}
+
+/* Phones sideways (iPhone 14 landscape leaves about 750 x 369 to work with): every screen but the
+   stats lists fits on one screen, so spacing, type and art all tighten up. */
+@media (max-height:500px){
+  /* menus keep side margins; the court itself fills the whole phone, edge to edge (user's choice) */
+  :root{--side-l:calc(max(10px, env(safe-area-inset-left) - 14px) + 2.5vw);--side-r:calc(max(10px, env(safe-area-inset-right) - 14px) + 2.5vw)}
+  #ui{padding-block:6px 8px}                                           /* sides come from --side-l / --side-r */
+  .bar{margin-bottom:6px;gap:8px}
+  .title{font-size:18px}
+  .box{padding:2px 8px;font-size:12px;border-width:2px}
+  .icon{width:34px;height:30px;font-size:15px}
+  .btn{padding:6px 10px;font-size:12px;box-shadow:0 3px 0 var(--navy)}
+  .btn.sm{padding:4px 7px;font-size:11px}
+  .panel{padding:6px 9px;border-width:2px}
+  .label{font-size:10px}
+  .hub{gap:8px}
+  .menu{gap:6px}.menu .btn{padding:9px 4px}
+  .chips{margin-top:6px;gap:6px}.chip{padding:3px 4px;border-width:2px}
+  .vs{margin:2px 0 6px}
+  .badge{width:36px;height:36px;font-size:11px}
+  /* cards */
+  .cards{gap:6px}
+  .card{border-width:2px;box-shadow:0 3px 0 var(--navy)}
+  .card .top{height:44px}.card .top img{width:40px;height:40px}
+  .card .pos{font-size:10px}.card .age{font-size:9px}
+  .card .bot{padding:2px 3px 3px;border-top-width:2px}
+  .card .nm,.card .sal{font-size:10px}.card .fnm{font-size:8px}
+  .card .fa-x,.card .fa-x b{font-size:10px}
+  .card .fa-x .lg{display:none}.card .fa-x .sh{display:inline}.card .fa-x b{letter-spacing:-.02em}
+  .card .stars{font-size:11px;letter-spacing:0}
+  .card:has(.flag) .bot{padding-bottom:16px}.card .flag{font-size:8px;padding:1px}
+  .capbar{margin-top:6px;gap:6px}.cap{padding:2px 6px;border-width:2px}.cap .t{font-size:9px;margin-bottom:2px}.cap .track{height:8px}
+  .fatabs{margin-bottom:6px}.fanote,.intro{display:none}
+  /* tables (standings) */
+  table{font-size:12px}th{padding:1px 4px;font-size:9px}td{padding:0 4px;border-top-width:1px;line-height:1.2}
+  td .stars{font-size:10px;letter-spacing:0}
+  /* player page */
+  .pp{grid-template-columns:130px minmax(0,1fr);gap:10px}
+  .pp .face .top{height:84px}.pp .face img{width:80px;height:80px}
+  .pp .face .bot{padding:4px}
+  .rt{margin-bottom:4px;grid-template-columns:78px minmax(0,1fr) 36px auto;gap:6px}
+  .rt .nm{font-size:10px}.segs i{height:10px}
+  .rt ~ .muted{display:none}                                           /* rating descriptions and the training note: five ratings need the room */
+  .pst{font-size:11px}.pst td,.pst th{padding:1px 4px}
+  .pp .panel .muted{display:none}                                      /* "per game" footnote under the stats table */
+  .rt{margin-bottom:2px}
+  /* team picker */
+  .tgrid{gap:4px}.tpick{padding:2px 4px;gap:4px}.tpick .tn{font-size:9px;line-height:1.05}.tpick .tn b{font-size:8px}
+  .badge.sm{width:22px;height:22px;font-size:7px}
+  /* uniforms */
+  .kitimg{width:78px;padding:3px 6px}.kitp{gap:4px}
+  /* post-game */
+  .post3{gap:8px}.post3 .panel{font-size:12px !important}
+  .post3 .px.num{font-size:22px !important}
+  .sheet{padding:10px}.sheet .inner{gap:6px}
+  /* front office: the long money breakdown hides, facilities go 2 x 2, the outlook tightens */
+  .fo-detail{display:none}
+  .fac-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .fac-list .panel{flex-direction:column;align-items:stretch;gap:2px;padding-block:5px}
+  .fac-list .panel .muted{display:none}                                   /* the upgrade descriptions stay on the computer version */
+  .fac-list .panel .px{font-size:11px !important}
+  .fac-list .fshort{display:block;font-size:11px;line-height:1.1;color:#ffe0d2}                /* phones: one short line saying what the level gives */
+  .outlook .tipline{font-size:10.5px;line-height:1.25;margin-top:3px}
+  /* in the game: a thumb-sized SHOOT button instead of the big desktop one */
+  :root{--sb:76px;--mw:10px;--mh:100px}                               /* phone: small button, slim meter above it */
+  .shootbtn{font-size:12px;border-width:2px;box-shadow:0 3px 0 var(--navy)}
+  .meter .pct{font-size:10px}
+}
+
+#rotate{display:none;position:fixed;inset:0;z-index:100;background:var(--blue);align-items:center;justify-content:center;text-align:center;padding:24px}
+#rotate .in{display:grid;gap:14px;justify-items:center}
+@media (orientation:portrait) and (max-width:700px){ #rotate{display:flex} }
+/* --- Retro Relay --- */
+.tpick .badge.sm,.slot .badge.sm{width:40px;flex:none}
+.tgrid.five{grid-template-columns:repeat(5,minmax(0,1fr))}
+.cards.six{grid-template-columns:repeat(6,minmax(0,1fr))}
+.card.picked{outline:4px solid var(--yellow);outline-offset:-1px}
+.card .fa-x b{font-family:var(--numf)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+.two.wide{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
+.stackp{display:grid;gap:8px;align-content:start}
+.place{font-size:22px}.place .num{font-size:20px;margin-left:8px}
+td.tl{text-align:left}
+.trow{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.dot{display:inline-block;width:11px;height:11px;border:2px solid;border-radius:2px;flex:none}
+.bests{display:grid;gap:1px;font-size:12px;margin-top:4px}.bests b{margin-left:4px}
+.en{height:10px;background:#000;border:2px solid #000;border-radius:2px;min-width:0}.en i{display:block;height:100%}
+.tag{font-family:var(--px);font-size:10px;background:var(--yellow);color:#241a00;border-radius:3px;padding:1px 4px;text-align:center;justify-self:start}
+.tag.off{visibility:hidden}
+.lu{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:10px;align-items:start}
+.rlist{display:grid;gap:5px}
+.rrow,.rhead{display:grid;grid-template-columns:28px minmax(0,1fr) 58px 62px 42px;align-items:center;gap:7px}
+.rhead{padding:0 8px}.rhead span:nth-child(3){text-align:right}
+.rrow{width:100%;border:2px solid rgba(255,255,255,.25);border-radius:6px;background:var(--blue-dd);padding:3px 6px;text-align:left}
+.rrow.on{border-color:var(--yellow)}
+.rrow img{width:28px;height:28px;image-rendering:pixelated;border-radius:3px;display:block}
+.rrow .nm{font-family:var(--px);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rrow .yr{font-size:10px;color:#ffe0d2}
+.rrow .pb{text-align:right;font-size:14px;line-height:1.05}.rrow .pb small{display:block;font-size:10px;color:#ffb36b}
+.legs{display:grid;gap:6px}
+.leg{display:grid;grid-template-columns:50px minmax(0,1fr) auto 50px;align-items:center;gap:6px;border:2px solid rgba(255,255,255,.25);border-radius:6px;background:var(--blue-dd);padding:3px 6px;min-height:38px}
+.leg.empty{grid-template-columns:50px 1fr}
+.leg > b{text-align:right;font-size:14px}
+.lname{all:unset;cursor:pointer;font-family:var(--px);font-size:12px;display:grid;white-space:nowrap;overflow:hidden}
+.lname .after{font-family:var(--numf);font-size:10px}
+.eff{min-width:74px}.eff.e0{background:#2f8a47}.eff.e2{background:var(--red)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 52px 70px;gap:8px;align-items:center;font-size:13px}
+.split .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.split b{text-align:right}
+/* watching a race */
+.rhud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:center;align-items:flex-start;gap:6px;pointer-events:none}
+.rbox{border:2px solid #fff;border-top:0;border-radius:0 0 8px 8px;background:#0b1433;font-family:var(--px);font-weight:700;padding:2px 10px 3px;display:flex;gap:10px;align-items:baseline;font-size:12px}
+.rbox .num{font-size:16px;min-width:66px;text-align:right}
+.order{display:flex;gap:3px;margin-top:3px}
+.och{display:flex;align-items:center;gap:3px;font-family:var(--px);font-size:10px;background:rgba(11,20,51,.85);border:2px solid rgba(255,255,255,.3);border-radius:4px;padding:1px 4px}
+.och.me{border-color:var(--yellow);color:var(--yellow)}
+.och i{width:8px;height:8px;border:1px solid #fff}
+.gbtn{top:auto;bottom:calc(8px + env(safe-area-inset-bottom) * .5)}
+@media (max-height:500px){
+  .lu,.two{gap:8px}.rlist{gap:3px}.legs{gap:4px}
+  .rrow{padding:3px 6px}
+  .leg{min-height:44px;padding:2px 6px}
+  .place{font-size:18px}.place .num{font-size:16px}
+  .split{font-size:12px}
+  .stackp{gap:5px}
+}
+</style>
+
+<div id="ui"></div>
+
+<div id="game" hidden>
+  <div class="stage" id="stage">
+    <canvas id="court" width="640" height="360"></canvas>
+    <div class="rhud"><div class="rbox"><span id="evn"></span><span class="num" id="clk">0.00</span></div><div class="order" id="order"></div></div>
+    <button class="btn sm gbtn" id="skipBtn">Skip</button>
+    <div class="banner" id="banner" hidden></div>
+  </div>
+</div>
+
+<div id="rotate"><div class="in">
+  <div class="px" style="font-size:22px">Turn your phone sideways</div>
+  <div class="muted">Retro Relay plays in landscape.</div>
+</div></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================ helpers ============================ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rnd = (a, b) => a + Math.random() * (b - a);
+const ri = (a, b) => Math.floor(rnd(a, b + 1));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+/* ============================ data ============================ */
+// every runner is made up
+const FIRST = ['Marcus','Tyler','Andre','Malik','Darius','Trey','Cole','Evan','Aaron','Caleb','Derek','Elijah','Luke','Mason','Noah','Omar','Quinn','Sam','Terrence','Victor','Xavier','Dante','Miles','Luis','Theo','Rashad','Bryce','Kai','Deshawn','Jamar'];
+const LAST = ['Brooks','Ellis','Jenkins','Lewis','Moore','Owens','Stone','Turner','Vance','Banks','Cole','Dixon','Fisher','Gibson','Harper','Knight','Lowe','Newton','Ramsey','Sutton','Tate','Webb','Bishop','Cross','Drake','Foster','Holt','Maxwell','Ruiz','Santos','Warren','Bell','Coleman','Diaz','Graves','Okafor','Mensah','Kowalski','Novak'];
+const TONES = { black:'#7a4a2b', tan:'#c68a61', white:'#e8b58f', dark:'#57341f', brown:'#7a4a2b', caramel:'#a06a44', light:'#e0aa82', fair:'#f0c6a2' };
+const SKIN = Object.values(TONES);
+const HAIR = ['#1b1410','#3a2618','#5c3a1e','#d7b35a'];
+const HAIR_BY_TONE = { black:['#1b1410'], tan:['#1b1410','#3a2618'], white:['#1b1410','#3a2618','#5c3a1e','#d7b35a'] };
+const STYLES_BY_TONE = { black:['afro','fade','headband'], tan:['afro','fade','headband','curly'], white:['fade','headband','curly'] };
+function giveLook(p){
+  const tone = pick(['black','black','tan','white','white']);
+  p.tone = tone; p.skin = TONES[tone]; p.hair = pick(HAIR_BY_TONE[tone]); p.style = pick(STYLES_BY_TONE[tone]);
+  return p;
+}
+
+/* ============================ Retro Relay: the game ============================
+   You are a relay coach (user's design, 2026-10-08). Six runners, three relays a meet (4x100, 4x200, 4x400), six teams
+   a race. Before each relay you pick four runners, their order and how hard each one goes, then you watch it.
+   Career: a high school (5 meets, then district, state, nationals), then a college job (5 meets, conference, NCAA),
+   then one shot at the Olympics with the USA team. There is no money: top-three finishes earn training points. */
+
+/* ---- events ---- */
+// fly: seconds a running start saves on legs 2-4; cost: energy a steady leg takes; watch: how many race seconds pass per real second
+const EVENTS = [
+  { key:'x100', name:'4x100', leg:100, fly:.6, cost:30, watch:1.6 },
+  { key:'x200', name:'4x200', leg:200, fly:.5, cost:42, watch:3.2 },
+  { key:'x400', name:'4x400', leg:400, fly:.4, cost:55, watch:6.5 },
+];
+const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet points for places 1-6 in each relay
+const YEARS = ['FR', 'SO', 'JR', 'SR'];
+const EFFORT = [{ key:'easy', name:'Easy', time:1.025, cost:.72 }, { key:'steady', name:'Steady', time:1, cost:1 }, { key:'all', name:'All out', time:.988, cost:1.38 }];
+const RACE_TP = [3, 2, 1], MEET_TP = [6, 4, 2];                       // training points: top three in a relay, top three in the meet (doubled at championship meets)
+const REST = 12;                                                       // energy everyone gets back between two relays
+
+/* ---- schools: [name, short, singlet color, shorts color]. One uniform each (user): a singlet and shorts. ---- */
+const HS = [
+  ['Lincoln High', 'LIN', '#1f3a8a', '#f2c230'], ['Central High', 'CEN', '#b3202a', '#f2f2f4'], ['Riverside High', 'RIV', '#0e7a3b', '#101418'],
+  ['Westview High', 'WES', '#5b2a86', '#f2c230'], ['Northgate High', 'NOR', '#101418', '#d7263d'], ['Eastwood High', 'EAS', '#e0701a', '#1b2a49'],
+  ['Jefferson High', 'JEF', '#7a1f2b', '#c9ccd6'], ['Oak Ridge High', 'OAK', '#1b4d3e', '#e0a800'], ['Pine Valley High', 'PIN', '#2e86de', '#f2f2f4'],
+  ['Franklin High', 'FRA', '#c8102e', '#0b1f3a'],
+];
+// high schools met at district, state and nationals (never coachable)
+const HS_AWAY = [['Bayside', 'BAY', '#12a3a3', '#1f2a44'], ['St. Mark\'s', 'STM', '#7a4bd1', '#f2f2f4'], ['Hillcrest', 'HIL', '#d9453b', '#101418'], ['Summit', 'SUM', '#2f6fe0', '#ffd23f'], ['Redwood', 'RED', '#8a1c1c', '#e8d8b0'],
+  ['Kennedy', 'KEN', '#0b2545', '#8fd3f4'], ['Mountain View', 'MTV', '#3a5a40', '#f2f2f4'], ['Carver', 'CAR', '#f2c230', '#101418'], ['Trinity', 'TRI', '#5aa9e6', '#0b1f3a'], ['Lakeshore', 'LAK', '#17348a', '#e0584b'],
+  ['Desert Ridge', 'DES', '#c46a2b', '#3a2618'], ['Booker T.', 'BTW', '#111111', '#e0a800'], ['Roosevelt', 'ROO', '#0e7a3b', '#f2c230'], ['Glenbrook', 'GLE', '#b0304f', '#f2f2f4'], ['Sacred Heart', 'SAC', '#a00020', '#c9ccd6']];
+// colleges: [name, short, singlet, shorts, tier, can hire you]. Division 2 is tier 0; Division 1 runs tier 1 (smallest) to 5.
+// Half of each division can never hire you (user), so some programs are only ever opponents.
+const D2 = [
+  ['West Texas A&M', 'WT', '#6a1b2a', '#f2f2f4', 0, 1], ['Grand Valley State', 'GVSU', '#0065a4', '#101418', 0, 1], ['Adams State', 'ADAM', '#0e7a3b', '#101418', 0, 1],
+  ['Pittsburg State', 'PITT', '#b3202a', '#f2c230', 0, 1], ['Tiffin', 'TIFF', '#1b4d3e', '#e0a800', 0, 1],
+  ['Saint Augustine\'s', 'SAU', '#1f3a8a', '#f2f2f4', 0, 0], ['Angelo State', 'ANG', '#1b2a6b', '#e0a800', 0, 0], ['Ashland', 'ASH', '#5b2a86', '#f2c230', 0, 0],
+  ['Lincoln (MO)', 'LUMO', '#0b1f3a', '#f2f2f4', 0, 0], ['Academy of Art', 'ART', '#c8102e', '#101418', 0, 0],
+];
+const D1 = [
+  ['Georgia', 'UGA', '#ba0c2f', '#101418', 5, 1], ['Notre Dame', 'ND', '#c99700', '#0c2340', 5, 1], ['LSU', 'LSU', '#461d7c', '#fdd023', 5, 1],
+  ['Florida', 'UF', '#fa4616', '#0021a5', 5, 0], ['Texas', 'TEX', '#bf5700', '#f2f2f4', 5, 0], ['Texas A&M', 'TAMU', '#500000', '#f2f2f4', 5, 0],
+  ['USC', 'USC', '#990000', '#ffc72c', 4, 1], ['Oregon', 'ORE', '#154733', '#fee123', 4, 1], ['Tennessee', 'TENN', '#ff8200', '#f2f2f4', 4, 1],
+  ['Arkansas', 'ARK', '#9d2235', '#f2f2f4', 4, 0], ['Alabama', 'BAMA', '#9e1b32', '#f2f2f4', 4, 0], ['Florida State', 'FSU', '#782f40', '#ceb888', 4, 0],
+  ['Texas Tech', 'TTU', '#cc0000', '#101418', 3, 1], ['Kentucky', 'UK', '#0033a0', '#f2f2f4', 3, 1], ['Ohio State', 'OSU', '#bb0000', '#666666', 3, 1],
+  ['Houston', 'HOU', '#c8102e', '#f2f2f4', 3, 0], ['Clemson', 'CLEM', '#f56600', '#522d80', 3, 0], ['Baylor', 'BAY', '#154734', '#ffb81c', 3, 0],
+  ['Michigan', 'MICH', '#ffcb05', '#00274c', 2, 1], ['North Carolina A&T', 'NCAT', '#004684', '#fdb927', 2, 1], ['Iowa', 'IOWA', '#101418', '#ffcd00', 2, 1],
+  ['Stanford', 'STAN', '#8c1515', '#f2f2f4', 2, 0], ['Penn State', 'PSU', '#041e42', '#f2f2f4', 2, 0], ['Minnesota', 'MINN', '#7a0019', '#ffcc33', 2, 0],
+  ['Central Connecticut State', 'CCSU', '#1b4f9c', '#f2f2f4', 1, 1], ['Wagner', 'WAG', '#00483a', '#f2f2f4', 1, 1], ['Maine', 'MAINE', '#003263', '#b0d7ff', 1, 1],
+  ['Monmouth', 'MONM', '#041e42', '#c9ccd6', 1, 0], ['Albany', 'ALB', '#46166b', '#eeb211', 1, 0], ['Rider', 'RID', '#981e32', '#f2f2f4', 1, 0],
+];
+const NATIONS = [['United States', 'USA', '#0a3161', '#b31942'], ['Jamaica', 'JAM', '#fed100', '#009b3a'], ['Great Britain', 'GBR', '#f2f2f4', '#012169'], ['Japan', 'JPN', '#f2f2f4', '#bc002d'],
+  ['Canada', 'CAN', '#d52b1e', '#f2f2f4'], ['Italy', 'ITA', '#0066cc', '#f2f2f4'], ['South Africa', 'RSA', '#007a4d', '#ffb612'], ['China', 'CHN', '#de2910', '#ffde00']];
+const school = (row, kind) => ({ name:row[0], abbr:row[1], c1:row[2], c2:row[3], tier:row[4] ?? 0, hire:!!row[5], kind });
+
+/* ---- how fast a team is: its level is the average Speed rating of its runners (0-99) ----
+   Speed turns into a 100 m best: 13.2 s at 0 down to 9.6 s at 100, so (user's benchmarks) an average high school runner
+   (12.0) is about 33, state level (11.0) about 61, an elite college sprinter (10.3) about 80 and the world record 100. */
+const LEVELS = {
+  hs:{ area:[27, 42], you:34, stage:[[40, 50], [50, 60], [58, 66]] },   // district, state, nationals fields
+  d2:{ area:[62, 72], stage:[[66, 73], [70, 76]] },                        // conference, D2 nationals
+  d1:{ tier:[0, 69, 73, 76, 79, 82], stage:[[76, 82], [79, 84]] },         // by tier; conference, NCAA final
+  usa:{ you:88, field:[83, 89] },
+};
+// the best a runner's rating can get at each level: about 10.5 in high school, 10.2 in Division 2, 9.95 in Division 1
+const CAP = { hs:74, d2:82, d1:90, usa:97 };
+/* The program: the level your freshmen arrive at. It starts where the school is and moves with your seasons: down 1 for
+   missing the championship meets, up about 1.6 for each round you get through, never below where the school started and
+   never more than PROG_UP above it (winning does not turn a small college into a powerhouse: you move up by taking jobs). */
+const PROG_UP = { hs:24, d2:8, d1:5 };
+const t100 = r => 13.2 - .036 * r.spd;
+const t200 = r => 2 * t100(r) + (60 - r.end) * .012;
+const t400 = r => 2 * t200(r) + 5.2 - (r.end - 50) * .05;
+const pbOf = (r, leg) => leg === 100 ? t100(r) : leg === 200 ? t200(r) : t400(r);
+const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}` : t.toFixed(2);
+const gauss = () => { let s = 0; for (let i = 0; i < 6; i++) s += Math.random(); return (s - 3) / .7071; };   // roughly a standard normal
+
+/* ---- runners: Speed (the 100), Endurance (holds it over 200 and 400, and tires less), Start (out of the blocks),
+   Handoff (clean exchanges). All 1-99. ---- */
+const RATE = ['spd', 'end', 'acc', 'hnd'];
+const RATE_NAME = { spd:'Speed', end:'Endurance', acc:'Start', hnd:'Handoff' };
+const RATE_DESC = { spd:'His 100 m. Every point is 0.036 s.', end:'Holds his speed over 200 and 400, and tires less between races.', acc:'Out of the blocks: matters on the lead-off leg.', hnd:'Cleaner baton exchanges, fewer bobbles.' };
+function makeRunner(level, year = ri(0, 3)){
+  const p = giveLook({ id:uid(), fn:pick(FIRST), ln:pick(LAST), num:ri(1, 99), year, tr:{} });
+  const base = level + [-4, -1.5, 1, 3][year];
+  const type = pick([[3, -5], [0, 0], [0, 0], [-3, 6]]);                // a pure sprinter, an all-rounder, or a quarter-miler
+  p.spd = clamp(Math.round(base + type[0] + rnd(-5, 5)), 1, 99);
+  p.end = clamp(Math.round(base + type[1] + rnd(-9, 9)), 1, 99);
+  p.acc = clamp(Math.round(base + rnd(-10, 10)), 1, 99);
+  p.hnd = clamp(Math.round(45 + level * .35 + rnd(-18, 18)), 1, 99);
+  return p;
+}
+const squad = level => { const yrs = shuffle([0, 0, 1, 1, 2, 2, 3, 3]).slice(0, 6); return yrs.map(y => makeRunner(level, y)); };
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const teamLevel = t => avg(t.roster.map(r => r.spd));
+
+/* ---- a leg of a relay ----
+   time = his best for the distance
+          + up to 0.25 s out of the blocks on the lead-off leg (less with a good Start), or minus the flying start on legs 2-4
+          x how hard he's told to run (Easy +2.5%, All out -1.2%)
+          x tiredness: nothing at full energy, about +1% at 70, +3% at 50, +6% at 30
+          x the day: about +-0.8% (a tenth or two over 100 m, as the user asked)
+   and it costs him energy: 30 / 42 / 55 for a steady 100 / 200 / 400, more all out, less with good Endurance. */
+const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * .000012;
+function legTime(r, ev, legIdx, effort, energy, luck = 0){
+  const start = legIdx === 0 ? .25 - r.acc * .0025 : -ev.fly;
+  return (pbOf(r, ev.leg) + start) * EFFORT[effort].time * tired(energy) * (1 + luck * .008);
+}
+const legCost = (r, ev, effort) => ev.cost * EFFORT[effort].cost * (1.25 - r.end / 200);
+// a baton exchange: about 0.1 to 0.5 s by the two runners' Handoff, more if the incoming man is spent, and now and then a bobble
+function exchange(a, b, energyAfter){
+  const h = (a.hnd + b.hnd) / 2, bobble = Math.random() < clamp(.02 + (60 - h) * .0012, .004, .09);
+  return { loss:.12 + (100 - h) * .004 + rnd(0, .12) + (energyAfter < 25 ? .15 : 0) + (bobble ? rnd(.7, 1.2) : 0), bobble };
+}
+// what a team would run with this lineup, without luck: used for the projected times on the lineup screen and by the computer's coaches
+function projected(team, ev, lineup){
+  let t = 0;
+  lineup.forEach((L, i) => { const r = team.roster[L.i]; t += legTime(r, ev, i, L.effort, team.energy[r.id] ?? 100); if (i) t += .12 + (100 - (r.hnd + team.roster[lineup[i - 1].i].hnd) / 2) * .004 + .06; });
+  return t;
+}
+// the computer's lineup (and your Auto button): the four with the best times for this distance as they are right now,
+// quickest starter first, the fastest man on the anchor
+function autoLineup(team, ev, effort = 1){
+  const idx = team.roster.map((r, i) => ({ i, t:legTime(r, ev, 1, effort, team.energy[r.id] ?? 100), acc:r.acc })).sort((a, b) => a.t - b.t).slice(0, 4);
+  const lead = idx.slice().sort((a, b) => b.acc - a.acc)[0], rest = idx.filter(x => x !== lead).sort((a, b) => b.t - a.t);
+  return [lead, ...rest].map(x => ({ i:x.i, effort }));
+}
+// run one relay for every team in the meet: returns each team's legs and total, slowest to... sorted fastest first
+function runEvent(meet, ev){
+  const out = meet.teams.map((team, ti) => {
+    const lineup = team.lineup, legs = [];
+    let total = 0;
+    lineup.forEach((L, i) => {
+      const r = team.roster[L.i], en = team.energy[r.id] ?? 100;
+      let t = legTime(r, ev, i, L.effort, en, gauss()), ex = null;
+      const after = clamp(en - legCost(r, ev, L.effort), 0, 100);
+      if (i) { ex = exchange(team.roster[lineup[i - 1].i], r, legs[i - 1].after); t += ex.loss; }
+      legs.push({ id:r.id, name:`${r.fn[0]}. ${r.ln}`, t, effort:L.effort, before:en, after, loss:ex ? ex.loss : 0, bobble:!!(ex && ex.bobble) });
+      total += t;
+    });
+    return { ti, total, legs };
+  });
+  out.forEach(o => o.legs.forEach(l => { meet.teams[o.ti].energy[l.id] = l.after; }));
+  out.sort((a, b) => a.total - b.total).forEach((o, k) => { o.place = k + 1; o.pts = POINTS[k]; });
+  return out;
+}
+const restAll = meet => meet.teams.forEach(t => t.roster.forEach(r => { t.energy[r.id] = clamp((t.energy[r.id] ?? 100) + REST, 0, 100); }));
+
+/* ============================ the career ============================ */
+let G = null;
+const me = () => G.teams.find(t => t.user);
+const mkTeam = (sc, level, user = false) => ({ ...sc, id:sc.abbr, user, roster:squad(level), base:level, pts:0, meets:0, best:{} });
+// the group of ten you race all season: your area's high schools, the ten Division 2 programs, or your Division 1 region
+function buildLeague(){
+  const sc = G.school, L = G.level;
+  let others;
+  if (L === 'hs') others = HS.filter(r => r[1] !== sc.abbr).map(r => mkTeam(school(r, 'hs'), rnd(...LEVELS.hs.area)));
+  else if (L === 'd2') others = D2.filter(r => r[1] !== sc.abbr).map(r => mkTeam(school(r, 'd2'), rnd(...LEVELS.d2.area)));
+  else {                                                              // a region of ten: two or so from each tier, re-drawn each season
+    const pool = shuffle(D1.filter(r => r[1] !== sc.abbr)); others = [];
+    for (let tier = 1; tier <= 5; tier++) others.push(...pool.filter(r => r[4] === tier).slice(0, 2));
+    others = others.slice(0, 9).map(r => mkTeam(school(r, 'd1'), LEVELS.d1.tier[r[4]] + rnd(-1.5, 1.5)));
+  }
+  const mine = { ...sc, id:sc.abbr, user:true, roster:G.roster, base:0, pts:0, meets:0, best:{} };
+  G.teams = [mine, ...others];
+}
+function newCareer(abbr){
+  const sc = school(HS.find(r => r[1] === abbr), 'hs');
+  G = { v:1, level:'hs', school:sc, season:1, year:1, phase:'meets', meetNo:0, tp:0, prog:LEVELS.hs.you, prog0:LEVELS.hs.you, roster:squad(LEVELS.hs.you), history:[], records:{}, offers:[], meet:null, last:null, titles:0, gold:0 };
+  buildLeague();
+}
+const STAGES = { hs:['District', 'State', 'Nationals'], d2:['Conference', 'D2 Nationals'], d1:['Conference', 'NCAA Championships'], usa:['Olympic Games'] };
+const MEETS = 5;
+const standings = () => [...G.teams].sort((a, b) => b.pts - a.pts || (a.best.x100 || 99) - (b.best.x100 || 99));
+// who is in the next meet
+function nextMeetInfo(){
+  if (G.phase === 'meets') return { kind:'meet', title:`Meet ${G.meetNo + 1} of ${MEETS}`, sub:'Top 2 in the standings after five meets go on' };
+  if (G.phase === 'stage') { const names = STAGES[G.level], last = G.stage === names.length - 1; return { kind:'stage', title:names[G.stage], sub:last ? (G.level === 'd1' ? 'Win it and the USA team is yours' : G.level === 'usa' ? 'One shot' : 'The last meet of the season') : 'Top 3 go on' }; }
+  return null;
+}
+function startMeet(){
+  const info = nextMeetInfo(); if (!info) return;
+  let field, title = info.title, big = false;
+  if (info.kind === 'meet') field = [me(), ...shuffle(G.teams.filter(t => !t.user)).slice(0, 5)];
+  else {
+    big = true;
+    const range = G.level === 'usa' ? LEVELS.usa.field : LEVELS[G.level].stage[G.stage];
+    let opp;
+    if (G.level === 'usa') opp = shuffle(NATIONS.slice(1)).slice(0, 5).map(r => mkTeam(school(r, 'nation'), rnd(...range)));
+    else if (G.level === 'hs') {
+      const rival = G.stage === 0 ? standings().filter(t => !t.user)[0] : null;      // district: the other team that came through your area
+      opp = shuffle([...HS_AWAY]).slice(0, rival ? 4 : 5).map(r => mkTeam(school([...r.slice(0, 1).map(n => n + ' High'), ...r.slice(1)], 'hs'), rnd(...range)));
+      if (rival) opp.unshift(rival);
+    } else {
+      const pool = (G.level === 'd2' ? D2 : D1).filter(r => r[1] !== G.school.abbr);
+      const strong = G.level === 'd1' ? pool.filter(r => r[4] >= (G.stage ? 4 : 3)) : pool;
+      opp = shuffle([...strong]).slice(0, 5).map(r => mkTeam(school(r, G.level), rnd(...range)));
+    }
+    field = [me(), ...opp];
+  }
+  const lanes = shuffle([0, 1, 2, 3, 4, 5]);
+  G.meet = { title, big, ev:0, done:[], teams:field.map((t, k) => ({ id:t.id, name:t.name, abbr:t.abbr, c1:t.c1, c2:t.c2, user:!!t.user, roster:t.roster, energy:{}, lineup:null, pts:0, lane:lanes[k] })) };
+  G.meet.teams.forEach(t => t.roster.forEach(r => { t.energy[r.id] = 100; }));
+  G.lineup = null;
+}
+// run the relay that's up: the computer's coaches pick, everyone races, points and energy are booked
+function raceEvent(){
+  const M = G.meet, ev = EVENTS[M.ev];
+  M.teams.forEach(t => { if (!t.user) t.lineup = autoLineup(t, ev, M.big ? 2 : 1); });
+  const res = runEvent(M, ev);
+  res.forEach(o => { M.teams[o.ti].pts += o.pts; });
+  const mine = res.find(o => M.teams[o.ti].user);
+  mine.tp = RACE_TP[mine.place - 1] || 0; G.tp += mine.tp;
+  // bests: the team's season best in each relay and your program records
+  const T = me(); if (!T.best[ev.key] || mine.total < T.best[ev.key]) T.best[ev.key] = mine.total;
+  const rec = G.records[ev.key]; mine.record = !rec || mine.total < rec.t; if (mine.record) G.records[ev.key] = { t:mine.total, season:G.season, school:G.school.abbr };
+  M.done.push({ ev:M.ev, res });
+  M.last = res;
+  return res;
+}
+function afterEvent(){
+  const M = G.meet;
+  M.ev++;
+  if (M.ev < EVENTS.length) { restAll(M); G.lineup = null; return false; }
+  finishMeet(); return true;
+}
+// the meet is over: places by total points (the 4x400 breaks ties), training points for the top three, and what it means for the season
+function finishMeet(){
+  const M = G.meet, last = M.done[M.done.length - 1].res;
+  const order = [...M.teams].sort((a, b) => b.pts - a.pts || last.find(o => M.teams[o.ti] === a).place - last.find(o => M.teams[o.ti] === b).place);
+  const place = order.findIndex(t => t.user) + 1, tp = (MEET_TP[place - 1] || 0) * (M.big ? 2 : 1);
+  G.tp += tp;
+  const sum = { title:M.title, place, tp, order:order.map(t => ({ abbr:t.abbr, name:t.name, c1:t.c1, c2:t.c2, user:t.user, pts:t.pts })), times:M.done.map(d => d.res.find(o => M.teams[o.ti].user).total), big:M.big };
+  if (!M.big) {                                                       // a regular meet: season points for everyone who ran, the rest of the area has its own meet
+    M.teams.forEach(t => { const lt = G.teams.find(x => x.id === t.id); if (lt) { lt.pts += t.pts; lt.meets++; } });
+    G.teams.filter(t => !M.teams.some(x => x.id === t.id)).forEach(t => { t.pts += Math.round(clamp(15 + (t.base - avg(G.teams.map(x => x.user ? teamLevel(x) : x.base))) * 1.1 + rnd(-5, 5), 4, 28)); t.meets++; });
+    G.meetNo++;
+    if (G.meetNo >= MEETS) {
+      const rank = standings().findIndex(t => t.user) + 1;
+      sum.rank = rank;
+      if (rank <= 2) { G.phase = 'stage'; G.stage = 0; sum.next = `You finished ${rank === 1 ? 'first' : 'second'} in the standings: on to ${STAGES[G.level][0]}.`; }
+      else { sum.next = `You finished ${ordinal(rank)} in the standings. Only the top two go on.`; endSeason(`${ordinal(rank)} in the standings`, 0); }
+    }
+  } else {
+    const names = STAGES[G.level], lastStage = G.stage === names.length - 1;
+    if (G.level === 'hs' && names[G.stage] === 'State' && place === 1) G.stateWon = true;   // counts even if the season ends later at Nationals
+    if (lastStage) {
+      const champ = place === 1;
+      if (G.level === 'usa') { if (champ) G.gold++; sum.next = champ ? 'Olympic champions. That is the top of the sport.' : `${ordinal(place)} at the Olympics. One shot, and it's gone: back to a college job.`; endSeason(champ ? 'Olympic champions' : `${ordinal(place)} at the Olympics`, champ ? 9 : 5); }
+      else { if (champ) G.titles++; sum.next = champ ? `${names[G.stage]} champions!` : `${ordinal(place)} at ${names[G.stage]}.`; endSeason(champ ? `${names[G.stage]} champions` : `${ordinal(place)} at ${names[G.stage]}`, champ ? 4 + G.stage : place <= 3 ? 3 + G.stage : 2 + G.stage); }
+    } else if (place <= 3) { G.stage++; sum.next = `${ordinal(place)} at ${names[G.stage - 1]}: on to ${names[G.stage]}.`; }
+    else { sum.next = `${ordinal(place)} at ${names[G.stage]}. Only the top three go on.`; endSeason(`${ordinal(place)} at ${names[G.stage]}`, 1 + G.stage); }
+  }
+  G.last = sum; G.meet = null; G.lineup = null;
+}
+const ordinal = n => n + (['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
+
+/* ---- the end of a season ----
+   `reach` is how far you got: 0 missed the cut, 1 out at the first championship meet, 2 out at the second ... and one more
+   for a podium or a win at the last one. It decides who offers you a job and how good your recruits are.
+   High school (user): win State and Division 2 schools call; a podium at Nationals brings the small Division 1 schools,
+   winning it the next tier. College: reach the national meet and schools a tier up call, win it and two tiers up;
+   win the NCAA title in Division 1 and you take the USA team to the Olympics. */
+function endSeason(finish, reach){
+  G.history.unshift({ season:G.season, school:G.school.abbr, level:G.level, finish, best:me().best.x100 || null });
+  G.phase = 'off'; G.reach = reach;
+  const L = G.level, offers = [];
+  const hire = (rows, kind) => rows.filter(r => r[5] && r[1] !== G.school.abbr).forEach(r => offers.push(school(r, kind)));
+  if (L === 'hs') {
+    const podium = /Nationals/.test(finish) && reach >= 5, champ = /Nationals champions/.test(finish);
+    if (G.stateWon) hire(D2, 'd2');
+    if (podium) hire(D1.filter(r => r[4] === 1), 'd1');
+    if (champ) hire(D1.filter(r => r[4] === 2), 'd1');
+  } else if (L === 'd2') {
+    if (reach >= 3) hire(D1.filter(r => r[4] === 1), 'd1');
+    if (/champions/.test(finish)) hire(D1.filter(r => r[4] === 2 || r[4] === 3), 'd1');
+  } else if (L === 'd1') {
+    const tier = G.school.tier;
+    if (/NCAA Championships champions/.test(finish)) G.usaNext = true;
+    if (reach >= 3) hire(D1.filter(r => r[4] === tier + 1), 'd1');
+    if (/champions/.test(finish)) hire(D1.filter(r => r[4] === tier + 2), 'd1');
+  }
+  G.offers = offers;
+  // the offseason: everyone gets a year older and a little quicker, seniors graduate
+  G.off = { step:'summary', finish, grew:[], gone:[], picks:0, class:[], signed:[] };
+  if (L === 'usa') return;
+  G.prog = clamp(G.prog + (reach ? reach * 1.6 : -1), G.prog0, G.prog0 + PROG_UP[L]);
+  for (const r of G.roster) {
+    const before = t100(r);
+    for (const k of RATE) r[k] = Math.max(r[k], clamp(r[k] + ri(1, [5, 4, 3, 2][r.year]), 1, CAP[L]));
+    if (r.year >= 3) G.off.gone.push(`${r.fn} ${r.ln}`); else G.off.grew.push({ name:`${r.fn[0]}. ${r.ln}`, yr:YEARS[r.year + 1], from:before, to:t100(r) });
+  }
+}
+// take a job: a new school, its runners, a new region. You never go back down a level.
+function takeJob(sc){
+  G.school = sc; G.level = sc.kind; G.stateWon = false;
+  G.prog = G.prog0 = sc.kind === 'd2' ? rnd(64, 69) : LEVELS.d1.tier[sc.tier] + rnd(-1, 1);
+  G.roster = squad(G.prog);
+  G.offers = []; G.newJob = true;
+}
+// recruits: freshmen around your program's level, better after a deep run. You pick one for every open spot.
+function recruitClass(){
+  const open = G.roster.filter(r => r.year >= 3).length;
+  G.off.picks = open; G.off.class = Array.from({ length:open + 3 }, () => makeRunner(G.prog + rnd(-3, 4) + 4, 0));   // +4: makeRunner takes 4 off a freshman
+}
+function nextSeason(){
+  G.season++;
+  if (G.level === 'usa') { Object.assign(G, G.college); G.college = null; }   // the Olympics are a one-off: back to your college, as you left it
+  else {
+    if (!G.newJob) {                                                  // seniors out, everyone up a year, the recruits you signed in
+      G.roster = G.roster.filter(r => r.year < 3); G.roster.forEach(r => { r.year++; });
+      G.roster.push(...((G.off && G.off.signed) || []));
+      while (G.roster.length < 6) G.roster.push(makeRunner(G.prog + 4, 0));
+    }
+    G.newJob = false;
+    if (G.usaNext) {                                                  // NCAA champions: the national team for one meet
+      G.usaNext = false; G.college = { school:G.school, level:G.level, roster:G.roster };
+      G.school = school(NATIONS[0], 'nation'); G.level = 'usa'; G.roster = Array.from({ length:6 }, () => makeRunner(LEVELS.usa.you, 2));
+      G.phase = 'stage'; G.stage = 0; G.meetNo = 0; G.off = null; G.stateWon = false; buildLeagueUSA(); return;
+    }
+  }
+  G.phase = 'meets'; G.meetNo = 0; G.stage = 0; G.off = null; G.stateWon = false; G.reach = 0;
+  buildLeague();
+}
+function buildLeagueUSA(){ G.teams = [{ ...G.school, id:'USA', user:true, roster:G.roster, base:0, pts:0, meets:0, best:{} }]; }
+// training: 2 points onto a rating. The first costs 2 training points, each one after on the same rating 1 more,
+// and 1 more again for every 5 the rating is past 55 (the last tenths are the hard ones)
+const trainCost = (r, k) => 2 + (r.tr[k] || 0) + Math.max(0, Math.floor((r[k] - 55) / 5));
+
+/* ============================ saving ============================ */
+// three separate careers, kept on this device
+const SLOTS = 3, slotKey = n => `retrorelay.slot${n}`;
+let SLOT = null;
+function slotRaw(n){ try { return localStorage.getItem(slotKey(n)); } catch { return null; } }
+function slotInfo(n){ const raw = slotRaw(n); if (!raw) return null; try { const g = JSON.parse(raw); return g && g.school ? g : null; } catch { return null; } }
+function save(){ if (!SLOT || !G) return; try { localStorage.setItem(slotKey(SLOT), JSON.stringify(G)); } catch {} }
+function resetSlot(n){ try { localStorage.removeItem(slotKey(n)); } catch {} }
+// a loaded save holds copies of each roster: point the teams back at the one real list
+function relink(){
+  const t = G.teams.find(t => t.user); if (t) t.roster = G.roster;
+  if (G.meet) G.meet.teams.forEach(mt => { if (mt.user) mt.roster = G.roster; else { const lt = G.teams.find(x => x.id === mt.id); if (lt) mt.roster = lt.roster; } });
+}
+function openSlot(n){ SLOT = n; G = slotInfo(n); if (G) relink(); screen = 'hub'; pickedTeam = null; render(); }
+
+/* ============================ portraits ============================ */
+function shade(hex, k){
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => clamp(Math.round(v * (1 + k)), 0, 255);
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+const portraitCache = {};
+function portrait(p, c1){
+  const key = [p.id, c1, p.style, p.skin, p.hair].join('|');
+  if (portraitCache[key]) return portraitCache[key];
+  const S = 20, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const c = cv.getContext('2d'), f = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); };
+  const O = '#1a1426', sh = shade(p.skin, -.16), hi = shade(p.skin, .12), H = p.hair;
+  const st = p.style === 'headband' ? 'bald' : p.style, band = p.style === 'headband';
+  f(2, 15, 16, 5, O); f(3, 16, 14, 4, p.skin); f(6, 16, 8, 4, c1); f(8, 16, 4, 1, p.skin);   // bare shoulders and a singlet
+  f(8, 13, 4, 3, O); f(9, 13, 2, 3, p.skin);                                // neck
+  f(5, 3, 10, 11, O); f(6, 4, 8, 9, p.skin); f(5, 7, 1, 3, p.skin); f(14, 7, 1, 3, p.skin);
+  if (st === 'bald') f(8, 4, 3, 1, hi);                                      // shine
+  if (st === 'fade') { f(6, 3, 8, 2, H); f(6, 5, 1, 2, sh); f(13, 5, 1, 2, sh); }
+  if (st === 'afro') { f(4, 1, 12, 5, O); f(5, 1, 10, 5, H); f(4, 5, 2, 3, H); f(14, 5, 2, 3, H); }
+  if (st === 'curly') { f(5, 2, 10, 4, O); f(6, 2, 8, 3, H); [6, 8, 10, 12].forEach(x => f(x, 1, 1, 1, H)); f(5, 5, 1, 2, H); f(14, 5, 1, 2, H); }
+  if (band) { f(5, 5, 10, 1, O); f(6, 5, 8, 1, '#ffffff'); }
+  f(7, 8, 2, 1, '#ffffff'); f(11, 8, 2, 1, '#ffffff'); f(8, 8, 1, 1, O); f(12, 8, 1, 1, O);
+  f(7, 7, 2, 1, O); f(11, 7, 2, 1, O);
+  f(9, 10, 2, 1, 'rgba(0,0,0,.25)');
+  f(8, 11, 4, 1, '#8a3b2e');
+  return portraitCache[key] = cv.toDataURL();
+}
+
+/* ============================ UI ============================ */
+let screen = 'hub', sel = null, pickedTeam = null;
+const LEVEL_NAME = { hs:'High school', d2:'Division 2', d1:'Division 1', usa:'Team USA', nation:'Olympics' };
+const badge = (t, cls = '') => `<div class="badge ${cls}" style="background:${t.c1};border-color:${t.c2};color:${t.c2}">${esc(t.abbr.slice(0, 4))}</div>`;
+const chipDot = t => `<i class="dot" style="background:${t.c1};border-color:${t.c2}"></i>`;
+const backBtn = `<button class="btn sm" data-a="go" data-s="hub">Back</button>`;
+function topBar(title, right = ''){
+  return `<div class="bar"><div class="box num">${G.tp} <span class="yellow">TP</span></div><div class="title">${title}</div><div class="row" style="gap:6px">${right}</div></div>`;
+}
+const enColor = en => en > 75 ? '#44c45d' : en > 50 ? '#ffd23f' : en > 25 ? '#f08a24' : '#e24b3b';
+const enBar = en => `<div class="en"><i style="width:${Math.round(en)}%;background:${enColor(en)}"></i></div>`;
+const short = r => `${r.fn[0]}. ${r.ln}`;
+
+function render(){
+  const ui = $('#ui');
+  let s = screen, f;
+  if (SLOT === null) { s = 'slots'; f = slotsHTML; }
+  else if (!G) { s = 'create'; f = createHTML; }
+  else if (G.meet) { s = G.meet.watching ? 'result' : 'lineup'; f = s === 'result' ? resultHTML : lineupHTML; }
+  else if (G.last && !G.last.seen) { s = 'post'; f = postHTML; }
+  else if (G.phase === 'off') { s = 'off'; f = offHTML; }
+  else { f = { squad:squadHTML, runner:runnerHTML, table:tableHTML, records:recordsHTML }[s]; if (!f) { s = 'hub'; f = hubHTML; } }
+  ui.innerHTML = f();
+  ui.dataset.screen = s; window.scrollTo(0, 0); ui.scrollTop = 0;
+}
+
+function slotsHTML(){
+  const cards = [1, 2, 3].map(n => {
+    const g = slotInfo(n);
+    if (!g) return `<div class="panel slot"><div class="label">Career ${n}</div><div class="slot-empty muted">Empty</div>
+      <button class="btn go" data-a="slotPlay" data-n="${n}">New career</button></div>`;
+    return `<div class="panel slot"><div class="label">Career ${n}</div>
+      <div class="row" style="gap:8px">${badge(g.school, 'sm')}<div class="grow" style="min-width:0"><div class="px slot-team">${esc(g.school.name)}</div><div class="muted" style="font-size:12px">${LEVEL_NAME[g.level]}</div></div></div>
+      <div class="slot-meta num"><span>Season ${g.season}</span><span>${g.gold ? g.gold + ' gold' : (g.titles || 0) + ' titles'}</span></div>
+      <div class="row" style="gap:6px"><button class="btn go grow" data-a="slotPlay" data-n="${n}">Coach</button><button class="btn red sm" data-a="slotReset" data-n="${n}">Reset</button></div></div>`;
+  }).join('');
+  return `<div class="title" style="margin:6px 0 10px">RETRO RELAY</div><div class="slots">${cards}</div>
+    <div class="muted" style="text-align:center;font-size:12px;margin-top:10px">Three separate careers. Saves stay on this device.</div>`;
+}
+function createHTML(){
+  const list = HS.map(r => { const t = school(r, 'hs'); return `<button class="tpick ${pickedTeam === t.abbr ? 'on' : ''}" data-a="pickTeam" data-t="${t.abbr}">${badge(t, 'sm')}<div class="tn"><b>${esc(t.name)}</b></div></button>`; }).join('');
+  return `<div class="bar"><button class="btn sm" data-a="slots">Back</button><div class="title">Pick your high school</div><span></span></div>
+    <div class="panel"><div class="tgrid five">${list}</div></div>
+    <div class="row between" style="margin-top:10px"><div class="muted intro" style="font-size:13px">You coach six runners through the 4x100, 4x200 and 4x400. Win State and the colleges start calling.</div>
+    <button class="btn go" data-a="create" ${pickedTeam ? '' : 'disabled'}>Start career</button></div>`;
+}
+function hubHTML(){
+  const info = nextMeetInfo(), T = me(), st = standings(), rank = st.findIndex(t => t.user) + 1, usa = G.level === 'usa';
+  const where = usa ? 'Six nations, three relays, one shot.' : G.phase === 'meets' ? `${ordinal(rank)} of ${st.length} in the standings, ${T.pts} pts` : `Qualified ${ordinal(rank)} from the regular season`;
+  return topBar(esc(G.school.name), `<div class="box">${LEVEL_NAME[G.level]}</div>`) + `<div class="hub">
+    <div class="panel"><div class="label">Season ${G.season}</div>
+      <div class="px" style="font-size:20px;margin:4px 0 2px">${info.title}</div>
+      <div class="muted" style="font-size:13px">${info.sub}</div>
+      <div style="font-size:13px;margin:6px 0 10px">${where}</div>
+      <button class="btn go" style="width:100%" data-a="meet">Go to the meet</button></div>
+    <div class="menu">
+      <button class="btn" data-a="go" data-s="squad">Squad</button>
+      <button class="btn" data-a="go" data-s="table">Standings</button>
+      <button class="btn" data-a="go" data-s="records">Records</button>
+      <button class="btn" data-a="slots">Careers</button>
+    </div></div>
+    <div class="cards six" style="margin-top:10px">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>`;
+}
+function runnerCard(r, extra = '', cls = '', attrs = ''){
+  return `<button class="card ${cls}" ${attrs}><div class="top" style="background:${G.school.c1}"><span class="pos">${YEARS[r.year]}</span><img src="${portrait(r, G.school.c1)}" alt=""></div>
+    <div class="bot"><div class="fnm">${esc(r.fn)}</div><div class="nm">${esc(r.ln)}</div>
+    <div class="fa-x">${[100, 200, 400].map(d => `<div><span>${d}</span><b class="num">${fmt(pbOf(r, d))}</b></div>`).join('')}</div>${extra}</div></button>`;
+}
+function squadHTML(){
+  return topBar('Squad', backBtn) + `<div class="cards six">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>
+    <div class="muted fanote" style="font-size:13px;margin-top:10px">Tap a runner to train him. Training points (TP): 3, 2, 1 for a top-three finish in a relay, and 6, 4, 2 for the meet (doubled at championship meets).</div>`;
+}
+function runnerHTML(){
+  const r = G.roster.find(x => x.id === sel); if (!r) { screen = 'squad'; return squadHTML(); }
+  const rows = RATE.map(k => { const cost = trainCost(r, k), max = r[k] >= CAP[G.level];
+    return `<div class="rt"><span class="nm">${RATE_NAME[k]}</span><div class="segs">${Array.from({ length:10 }, (_, i) => `<i class="${i < Math.round(r[k] / 10) ? 'on' : ''}"></i>`).join('')}</div><b class="num">${r[k]}</b>
+      <button class="btn sm" data-a="train" data-k="${k}" ${max || G.tp < cost ? 'disabled' : ''}>${max ? 'Maxed' : `+2 for ${cost} TP`}</button></div><div class="muted" style="font-size:12px;margin:-4px 0 8px">${RATE_DESC[k]}</div>`; }).join('');
+  return topBar(esc(`${r.fn} ${r.ln}`), `<button class="btn sm" data-a="go" data-s="squad">Back</button>`) + `<div class="pp">
+    <div class="face"><div class="top" style="background:${G.school.c1}"><img src="${portrait(r, G.school.c1)}" alt=""></div><div class="bot"><div class="px">${['Freshman', 'Sophomore', 'Junior', 'Senior'][r.year]}</div>
+      <div class="bests num">${[100, 200, 400].map(d => `<span>${d} m <b>${fmt(pbOf(r, d))}</b></span>`).join('')}</div></div></div>
+    <div class="panel">${rows}</div></div>`;
+}
+function tableHTML(){
+  const st = standings();
+  const rows = st.map((t, i) => `<tr class="${t.user ? 'me' : ''} ${i === 2 ? 'cut' : ''}"><td class="num">${i + 1}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${t.meets}</td><td class="num">${t.pts}</td></tr>`).join('');
+  const body = G.level === 'usa' ? `<div class="muted">The Olympics are a single meet: no standings.</div>` : `<table><tr><th>#</th><th style="text-align:left">Team</th><th>Meets</th><th>Pts</th></tr>${rows}</table>`;
+  return topBar('Standings', backBtn) + `<div class="panel">${body}</div>
+    <div class="muted fanote" style="font-size:13px;margin-top:8px">Each relay scores 10-8-6-4-2-1. After five meets the top two go on to ${STAGES[G.level][0]}.</div>`;
+}
+function recordsHTML(){
+  const T = me();
+  const rec = EVENTS.map(e => { const r = G.records[e.key]; return `<tr><td>${e.name}</td><td class="num">${T.best[e.key] ? fmt(T.best[e.key]) : '-'}</td><td class="num">${r ? fmt(r.t) : '-'}</td><td>${r ? `${esc(r.school)}, season ${r.season}` : ''}</td></tr>`; }).join('');
+  const hist = G.history.slice(0, 7).map(h => `<tr><td class="num">${h.season}</td><td>${esc(h.school)}</td><td style="text-align:left">${esc(h.finish)}</td><td class="num">${h.best ? fmt(h.best) : '-'}</td></tr>`).join('');
+  return topBar('Records', backBtn) + `<div class="two">
+    <div class="panel"><div class="label">Your best times</div><table><tr><th>Relay</th><th>Season</th><th>Career</th><th></th></tr>${rec}</table>
+      <div style="font-size:13px;margin-top:8px">${G.titles} national title${G.titles === 1 ? '' : 's'}, ${G.gold} Olympic gold${G.gold === 1 ? '' : 's'}</div></div>
+    <div class="panel"><div class="label">Past seasons</div>${hist ? `<table><tr><th>#</th><th>School</th><th style="text-align:left">Finish</th><th>4x100</th></tr>${hist}</table>` : '<div class="muted" style="font-size:13px">Your first season is under way.</div>'}</div></div>`;
+}
+
+/* ---- the meet: pick four, their order and how hard each one runs ---- */
+function lineupHTML(){
+  const M = G.meet, ev = EVENTS[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= [null, null, null, null];
+  const rows = T.roster.map((r, i) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legTime(r, ev, 1, 1, en) - legTime(r, ev, 1, 1, 100);
+    return `<button class="rrow ${leg >= 0 ? 'on' : ''}" data-a="pickR" data-i="${i}"><img src="${portrait(r, G.school.c1)}" alt="">
+      <span class="nm">${esc(short(r))} <span class="yr">${YEARS[r.year]}</span></span>
+      <span class="num pb">${fmt(pbOf(r, ev.leg))}${slow >= .05 ? `<small>+${slow.toFixed(2)}</small>` : ''}</span>
+      ${enBar(en)}<span class="tag ${leg >= 0 ? '' : 'off'}">${leg >= 0 ? 'LEG ' + (leg + 1) : ''}</span></button>`; }).join('');
+  const full = L.every(Boolean);
+  const legs = L.map((x, i) => { const what = ['Start', 'Leg 2', 'Leg 3', 'Anchor'][i];
+    if (!x) return `<div class="leg empty"><span class="label">${what}</span><span class="muted">Tap a runner</span></div>`;
+    const r = T.roster[x.i], en = T.energy[r.id], after = clamp(en - legCost(r, ev, x.effort), 0, 100);
+    return `<div class="leg"><span class="label">${what}</span><button class="lname" data-a="dropLeg" data-l="${i}">${esc(short(r))}<span class="after" style="color:${enColor(after)}">${Math.round(en)} to ${Math.round(after)}</span></button>
+      <button class="btn sm eff e${x.effort}" data-a="effort" data-l="${i}">${EFFORT[x.effort].name}</button><b class="num">${fmt(legTime(r, ev, i, x.effort, en))}</b></div>`; }).join('');
+  return `<div class="bar"><div class="box">Race ${M.ev + 1}/3</div><div class="title">${ev.name} <span class="st">${esc(M.title)}</span></div><div class="box num">${T.pts} <span class="yellow">PTS</span></div></div>
+    <div class="lu"><div class="panel rlist"><div class="rhead label"><span></span><span>Runner</span><span>${ev.leg} m best</span><span>Energy</span><span></span></div>${rows}</div>
+    <div class="panel legs">${legs}
+      <div class="row between"><span class="label">Projected</span><b class="num" style="font-size:16px">${full ? fmt(projected(T, ev, L)) : '-'}</b></div>
+      <div class="row" style="gap:6px"><button class="btn sm" data-a="auto">Auto</button><button class="btn sm" data-a="clear">Clear</button><button class="btn go grow" data-a="race" ${full ? '' : 'disabled'}>Race</button></div></div></div>`;
+}
+function resultHTML(){
+  const M = G.meet, ev = EVENTS[M.ev], res = M.last, mine = res.find(o => M.teams[o.ti].user);
+  const rows = res.map(o => { const t = M.teams[o.ti]; return `<tr class="${t.user ? 'me' : ''}"><td class="num">${o.place}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${fmt(o.total)}</td><td class="num">+${o.pts}</td><td class="num">${t.pts}</td></tr>`; }).join('');
+  const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.bobble ? ' <span class="bad">bobbled</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
+  const next = M.ev + 1 < EVENTS.length ? `Next: ${EVENTS[M.ev + 1].name}` : 'Meet results';
+  return `<div class="bar"><div class="box">Race ${M.ev + 1}/3</div><div class="title">${ev.name} results</div><span></span></div>
+    <div class="two wide"><div class="panel"><table><tr><th>#</th><th style="text-align:left">Team</th><th>Time</th><th>Pts</th><th>Meet</th></tr>${rows}</table></div>
+    <div class="panel stackp"><div class="px place">${ordinal(mine.place)} <span class="num">${fmt(mine.total)}</span></div><div class="row" style="gap:6px">${mine.tp ? `<div class="tag">+${mine.tp} TP</div>` : ''}${mine.record ? '<div class="tag">Program record</div>' : ''}</div>
+      <div class="label">Your splits and what's left in the tank</div>${legs}
+      <button class="btn go" data-a="next">${next}</button></div></div>`;
+}
+function postHTML(){
+  const L = G.last;
+  const rows = L.order.map((t, i) => `<tr class="${t.user ? 'me' : ''}"><td class="num">${i + 1}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${t.pts}</td></tr>`).join('');
+  const gold = /Olympic champions/.test(L.next || '');
+  return `<div class="bar"><span></span><div class="title">${esc(L.title)}</div><span></span></div>
+    <div class="two wide"><div class="panel"><table><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr>${rows}</table></div>
+    <div class="panel stackp"><div class="px place ${gold ? 'yellow' : ''}">${gold ? 'Olympic gold' : ordinal(L.place) + ' place'}</div>
+      <div class="num" style="font-size:13px">${EVENTS.map((e, i) => `${e.name} ${fmt(L.times[i])}`).join(' &nbsp; ')}</div>
+      <div style="font-size:14px">${L.tp ? `<b class="yellow">+${L.tp} training points for the meet</b>` : 'No meet bonus: finish in the top three for extra training points.'}</div>
+      ${L.next ? `<div style="font-size:14px">${esc(L.next)}</div>` : ''}
+      <button class="btn go" data-a="postOk">Continue</button></div></div>`;
+}
+
+/* ---- between seasons ---- */
+function offHTML(){
+  const O = G.off, usa = G.level === 'usa';
+  if (O.step === 'offers') {
+    const list = G.offers.map(t => `<button class="tpick" data-a="offer" data-t="${t.abbr}">${badge(t, 'sm')}<div class="tn"><b>${esc(t.name)}</b><br>${t.kind === 'd2' ? 'Division 2' : 'Division 1, ' + ['', 'small program', 'mid-major', 'solid program', 'contender', 'powerhouse'][t.tier]}</div></button>`).join('');
+    return `<div class="bar"><span></span><div class="title">Job offers</div><button class="btn sm" data-a="stay">Stay at ${esc(G.school.abbr)}</button></div>
+      <div class="panel"><div class="tgrid">${list}</div></div>
+      <div class="muted fanote" style="font-size:13px;margin-top:8px">Take a job and you inherit that school's runners. ${G.level === 'hs' ? 'Once you leave for college you never coach high school again.' : ''}</div>`;
+  }
+  if (O.step === 'recruit') {
+    const pickd = O.sel || [];
+    const cards = O.class.map(r => runnerCard(r, '', pickd.includes(r.id) ? 'picked' : '', `data-a="rec" data-id="${r.id}"`)).join('');
+    return `<div class="bar"><div class="box num">${pickd.length}/${O.picks}</div><div class="title">Recruiting</div><button class="btn go sm" data-a="sign" ${pickd.length === O.picks ? '' : 'disabled'}>Sign class</button></div>
+      <div class="cards six">${cards}</div>
+      <div class="muted fanote" style="font-size:13px;margin-top:8px">Pick ${O.picks} freshm${O.picks === 1 ? 'a' : 'e'}n to replace your seniors. Better seasons bring better recruits.</div>`;
+  }
+  const grew = O.grew.map(g => `<tr><td>${esc(g.name)}</td><td>${g.yr}</td><td class="num">${fmt(g.from)}</td><td class="num good">${fmt(g.to)}</td></tr>`).join('');
+  const nextTxt = usa ? 'Back to college' : G.offers.length ? `Job offers (${G.offers.length})` : 'Recruiting';
+  return `<div class="bar"><span></span><div class="title">Season ${G.season} is over</div><button class="btn go sm" data-a="offNext">${nextTxt}</button></div>
+    <div class="two"><div class="panel stackp"><div class="label">${esc(G.school.name)}</div><div class="px" style="font-size:18px">${esc(O.finish)}</div>
+      ${G.usaNext ? '<div class="yellow" style="font-size:14px">National champions: you take Team USA to the Olympics this summer.</div>' : ''}
+      ${usa ? '<div style="font-size:13px">Your college job is waiting for you.</div>' : `<div style="font-size:13px">${O.gone.length ? 'Graduating: ' + O.gone.map(esc).join(', ') : 'Nobody graduates this year.'}</div>`}
+      ${!usa && !G.offers.length && !G.usaNext ? `<div class="muted" style="font-size:13px">${G.level === 'hs' ? 'No college offers. Win State and they start calling.' : G.level === 'd1' ? 'Win the NCAA title to coach Team USA.' : 'No offers from bigger programs this year.'}</div>` : ''}</div>
+    <div class="panel"><div class="label">A year older, a step quicker (100 m)</div>${grew ? `<table><tr><th style="text-align:left">Runner</th><th>Now</th><th>Was</th><th>Is</th></tr>${grew}</table>` : '<div class="muted" style="font-size:13px">-</div>'}</div></div>`;
+}
+
+/* ---- sheets / toast ---- */
+let closeFn = null;
+function openSheet(html, mount){
+  closeSheet();
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  const sh = document.createElement('div'); sh.className = 'sheet'; sh.setAttribute('role', 'dialog');
+  sh.innerHTML = `<div class="inner">${html}</div>`;
+  document.body.append(bg, sh);
+  closeFn = () => { bg.remove(); sh.remove(); closeFn = null; };
+  bg.onclick = closeSheet; mount?.(sh);
+}
+function closeSheet(){ closeFn?.(); }
+let toastT;
+function toast(m){ document.querySelector('.toast')?.remove(); clearTimeout(toastT); const e = document.createElement('div'); e.className = 'toast'; e.textContent = m; document.body.append(e); toastT = setTimeout(() => e.remove(), 2600); }
+function confirmSheet(text, yes, onYes){
+  openSheet(`<div style="font-size:15px">${text}</div><div class="row" style="gap:8px"><button class="btn grow" id="cNo">Cancel</button><button class="btn go grow" id="cYes">${yes}</button></div>`,
+    sh => { sh.querySelector('#cNo').onclick = closeSheet; sh.querySelector('#cYes').onclick = () => { closeSheet(); onYes(); }; });
+}
+
+/* ---- every button ---- */
+function offFinish(){ nextSeason(); screen = 'hub'; save(); render(); }
+function offRecruit(){
+  if (G.newJob || G.level === 'usa') return offFinish();
+  recruitClass(); G.off.sel = [];
+  if (!G.off.picks) return offFinish();
+  G.off.step = 'recruit'; save(); render();
+}
+const ACT = {
+  slotPlay:d => openSlot(+d.n),
+  slotReset:d => confirmSheet(`Erase career ${d.n}? This can't be undone.`, 'Erase', () => { resetSlot(+d.n); render(); }),
+  slots:() => { save(); SLOT = null; G = null; render(); },
+  pickTeam:d => { pickedTeam = d.t; render(); },
+  create:() => { if (!pickedTeam) return; newCareer(pickedTeam); save(); screen = 'hub'; render(); },
+  go:d => { screen = d.s; render(); },
+  runner:d => { sel = d.id; screen = 'runner'; render(); },
+  train:d => { const r = G.roster.find(x => x.id === sel), cost = trainCost(r, d.k); if (G.tp < cost || r[d.k] >= CAP[G.level]) return; G.tp -= cost; r[d.k] = clamp(r[d.k] + 2, 1, CAP[G.level]); r.tr[d.k] = (r.tr[d.k] || 0) + 1; save(); render(); },
+  meet:() => { startMeet(); save(); render(); },
+  pickR:d => { const L = G.lineup, i = +d.i, at = L.findIndex(x => x && x.i === i);
+    if (at >= 0) L[at] = null; else { const free = L.indexOf(null); if (free < 0) return toast('All four legs are filled: tap a leg to free it'); L[free] = { i, effort:1 }; }
+    render(); },
+  dropLeg:d => { G.lineup[+d.l] = null; render(); },
+  effort:d => { const x = G.lineup[+d.l]; x.effort = (x.effort + 1) % 3; render(); },
+  auto:() => { const M = G.meet; G.lineup = autoLineup(M.teams.find(t => t.user), EVENTS[M.ev]); render(); },
+  clear:() => { G.lineup = [null, null, null, null]; render(); },
+  race:() => { const M = G.meet; if (!G.lineup.every(Boolean)) return; M.teams.find(t => t.user).lineup = G.lineup.map(x => ({ ...x })); raceEvent(); M.watching = true; save(); startRace(); },
+  next:() => { G.meet.watching = false; afterEvent(); save(); render(); },
+  postOk:() => { G.last.seen = true; save(); render(); },
+  offNext:() => { if (G.level === 'usa') return offFinish(); if (G.offers.length) { G.off.step = 'offers'; save(); render(); } else offRecruit(); },
+  stay:() => offRecruit(),
+  offer:d => { const t = G.offers.find(x => x.abbr === d.t); confirmSheet(`Take the job at <b>${esc(t.name)}</b>? You leave ${esc(G.school.name)} for good.`, 'Take it', () => { takeJob(t); offFinish(); }); },
+  rec:d => { const O = G.off, at = O.sel.indexOf(d.id); if (at >= 0) O.sel.splice(at, 1); else if (O.sel.length < O.picks) O.sel.push(d.id); else return toast(`Only ${O.picks} spot${O.picks === 1 ? '' : 's'} open`); render(); },
+  sign:() => { const O = G.off; O.signed = O.class.filter(r => O.sel.includes(r.id)); offFinish(); },
+};
+document.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; const f = ACT[b.dataset.a]; if (f) f(b.dataset, b); });
+
+/* ============================ runner sprites ============================ */
+// 14 px wide, facing right. H hair, S skin, s skin in shade, E eye, J singlet, j singlet in shade, P shorts, R shorts stripe, W sock, K shoe
+const BODY = [
+  '.....HHHH.....',
+  '....HHHHHH....',
+  '....HSSSSS....',
+  '....SSSSES....',
+  '....SSSSSS....',
+  '.....sSSS.....',
+  '.....JSSJ.....',
+  '..SSJJJJJJSS..',
+  '.SSSJJJJJJSSS.',
+  '.SS.JJJJJJ.SS.',
+  '.Ss.JJJJJJ.sS.',
+  '.Ss.jJJJJj.sS.',
+  '.Ss.jJJJJj.sS.',
+  '.SS.JJJJJJ.SS.',
+  '...PPPPPPPP...',
+  '...PPPPPPPP...',
+  '...PRPPPPRP...',
+  '...PRP..PRP...',
+];
+// running: the arms pump opposite the legs (two arm sets swapped onto rows 8-13)
+const ARMS = [
+  ['..SSJJJJJJSS..', '.SSSJJJJJJSS..', 'SS..JJJJJJ.SS.', 'S...JJJJJJ..SS', '....jJJJJj...S', '....jJJJJj....', '....JJJJJJ....'],
+  ['..SSJJJJJJSS..', '..SSJJJJJJSSS.', '.SS.JJJJJJ..SS', 'SS..JJJJJJ...S', 'S...jJJJJj....', '....jJJJJj....', '....JJJJJJ....'],
+];
+const LEGS = {
+  stand:['....SS..SS....', '....SS..SS....', '....ss..ss....', '....WW..WW....', '....WW..WW....', '....KKK.KKK...'],
+  run0: ['.....SSSS.....', '....SS..SS....', '....SS...SS...', '...ss....SS...', '...WW.....WW..', '..KK......KKK.'],
+  run1: ['.....SSSS.....', '.....SSSSS....', '......SS.SS...', '......ss.WW...', '......WW.KK...', '.....KKK......'],
+  run2: ['.....SSSS.....', '....SS..SS....', '...SS...SS....', '...SS....ss...', '..WW.....WW...', '.KKK......KK..'],
+  run3: ['.....SSSS.....', '....SSSSS.....', '...SS.SS......', '...WW.ss......', '...KK.WW......', '......KKK.....'],
+};
+function styleHair(rows, p){
+  rows = [...rows];
+  const style = p.style === 'headband' ? 'bald' : p.style, band = p.style === 'headband';
+  const put = (r, xs, ch) => { const a = [...rows[r]]; xs.forEach(x => { if (a[x] !== '.') a[x] = ch; }); rows[r] = a.join(''); };
+  let added = 0;
+  if (style === 'bald') { rows[0] = '.....SSSS.....'; rows[1] = '....SSSSSS....'; rows[2] = '....sSSSSS....'; }
+  if (style === 'fade') { rows[1] = '....sHHHHs....'; rows[2] = '....sSSSSS....'; }
+  if (style === 'afro') { rows[0] = '...HHHHHHHH...'; rows[1] = '...HHHHHHHH...'; rows[2] = '...HHSSSSSH...'; rows.splice(0, 0, '....HHHHHH....'); added = 1; }
+  if (style === 'curly') { rows[0] = '....HHHHHH....'; rows[2] = '....HSSSSH....'; rows.splice(0, 0, '....H.HH.H....'); added = 1; }
+  if (band) put(2 + added, [4, 5, 6, 7, 8, 9], 'W');
+  return { rows, added };
+}
+const spriteCache = {};
+function sprite(p, U, frame){
+  const key = [p.id, U.J, U.P, frame, p.style, p.skin, p.hair].join('|');
+  if (spriteCache[key]) return spriteCache[key];
+  const body = [...BODY];
+  if (frame !== 'stand') ARMS[frame === 'run0' || frame === 'run1' ? 0 : 1].forEach((row, i) => { body[7 + i] = row; });
+  const rows = styleHair(body, p).rows.concat(LEGS[frame] || LEGS.stand);
+  const pal = { H:p.hair, S:p.skin, s:shade(p.skin, -.16), E:'#1d1d27', J:U.J, j:shade(U.J, -.18), P:U.P, R:shade(U.P, -.25), W:'#f4f4f4', K:'#1d1d27' };
+  const c = document.createElement('canvas'); c.width = 14; c.height = rows.length;
+  const g = c.getContext('2d');
+  rows.forEach((r, y) => [...r].forEach((ch, x) => { if (pal[ch]) { g.fillStyle = pal[ch]; g.fillRect(x, y, 1, 1); } }));
+  return spriteCache[key] = c;
+}
+const FONT = {
+  'A':['.#.','#.#','###','#.#','#.#'],'B':['##.','#.#','##.','#.#','##.'],'C':['.##','#..','#..','#..','.##'],'D':['##.','#.#','#.#','#.#','##.'],'E':['###','#..','##.','#..','###'],
+  'F':['###','#..','##.','#..','#..'],'G':['.##','#..','#.#','#.#','.##'],'H':['#.#','#.#','###','#.#','#.#'],'I':['###','.#.','.#.','.#.','###'],'J':['..#','..#','..#','#.#','.#.'],
+  'K':['#.#','#.#','##.','#.#','#.#'],'L':['#..','#..','#..','#..','###'],'M':['#.#','###','###','#.#','#.#'],'N':['##.','#.#','#.#','#.#','#.#'],'O':['.#.','#.#','#.#','#.#','.#.'],
+  'P':['##.','#.#','##.','#..','#..'],'Q':['.#.','#.#','#.#','##.','.##'],'R':['##.','#.#','##.','#.#','#.#'],'S':['.##','#..','.#.','..#','##.'],'T':['###','.#.','.#.','.#.','.#.'],
+  'U':['#.#','#.#','#.#','#.#','###'],'V':['#.#','#.#','#.#','#.#','.#.'],'W':['#.#','#.#','###','###','#.#'],'X':['#.#','#.#','.#.','#.#','#.#'],'Y':['#.#','#.#','.#.','.#.','.#.'],
+  'Z':['###','..#','.#.','#..','###'],' ':['...','...','...','...','...'],
+  '0':['###','#.#','#.#','#.#','###'],'1':['.#.','##.','.#.','.#.','###'],'2':['###','..#','###','#..','###'],'3':['###','..#','###','..#','###'],'4':['#.#','#.#','###','..#','..#'],
+  '5':['###','#..','###','..#','###'],'6':['###','#..','###','#.#','###'],'7':['###','..#','.#.','.#.','.#.'],'8':['###','#.#','###','#.#','###'],'9':['###','#.#','###','..#','###']
+};
+const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].forEach((ch, i) => (FONT[ch] || FONT[' ']).forEach((r, yy) => [...r].forEach((p, xx) => { if (p === '#') c.fillRect(x + (i * 4 + xx) * k, y + yy * k, k, k); }))); };
+
+/* ============================ watching the race ============================
+   The track is a 400 m oval seen from the home-straight side, six lanes, everyone in his own lane all the way round.
+   A lap is four quarters of 100 m: the right-hand bend, the back straight (running left), the left-hand bend and the
+   home straight to the finish line at its right-hand end. The camera slides along with your runner on the straights
+   and sits still while he's on a bend (user). Nothing here decides anything: the times were set when you pressed Race. */
+const CH = 180, SS = 4, LS = 520, RX0 = 58, RY0 = 26, WX = 8, WY = 7.5, LANES = 6, PAD = 12;
+const RXO = RX0 + LANES * WX, RYO = RY0 + LANES * WY, XL = PAD + RXO, XR = XL + LS, CY = 106, WORLD_W = XR + RXO + PAD;
+const SPR = .55;                                                      // sprite pixels to track pixels
+let CW = 320, cam = 0, R = null, raf = 0, lastT = 0, trackCv = null;
+const cv = $('#court'), ctx = cv.getContext('2d');
+function lanePos(k, u){
+  u = ((u % 1) + 1) % 1;
+  const rx = RX0 + (k + .5) * WX, ry = RY0 + (k + .5) * WY, q = Math.floor(u * 4), s = u * 4 - q, a = Math.PI * s;
+  if (q === 0) return { x:XR + rx * Math.sin(a), y:CY + ry * Math.cos(a), dx:Math.cos(a) };
+  if (q === 1) return { x:XR - LS * s, y:CY - ry, dx:-1 };
+  if (q === 2) return { x:XL - rx * Math.sin(a), y:CY - ry * Math.cos(a), dx:-Math.cos(a) };
+  return { x:XL + LS * s, y:CY + ry, dx:1 };
+}
+function ovalPath(g, rx, ry){
+  g.beginPath(); g.moveTo(XL, CY + ry); g.lineTo(XR, CY + ry); g.ellipse(XR, CY, rx, ry, 0, Math.PI / 2, -Math.PI / 2, true);
+  g.lineTo(XL, CY - ry); g.ellipse(XL, CY, rx, ry, 0, -Math.PI / 2, Math.PI / 2, true); g.closePath();
+}
+function buildTrack(title){
+  const c = document.createElement('canvas'); c.width = WORLD_W * SS; c.height = CH * SS;
+  const g = c.getContext('2d'); g.scale(SS, SS);
+  g.fillStyle = '#3f9b4b'; g.fillRect(0, 0, WORLD_W, CH);
+  for (let x = 0; x < WORLD_W; x += 24) { g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(x, 0, 12, CH); }
+  // the stand along the back straight
+  g.fillStyle = '#2a2f45'; g.fillRect(0, 0, WORLD_W, 27); g.fillStyle = '#1b2033'; g.fillRect(0, 27, WORLD_W, 3);
+  const crowd = ['#e8b58f', '#c68a61', '#7a4a2b', '#e24b3b', '#ffd23f', '#f4f4f4', '#2f6fe0', '#44c45d', '#f08a24'];
+  for (let y = 3; y < 26; y += 4) for (let x = (y % 8 ? 1 : 3); x < WORLD_W; x += 4) if (Math.random() < .82) { g.fillStyle = pick(crowd); g.fillRect(x, y, 2, 2); }
+  g.fillStyle = '#c9ccd6'; g.fillRect(0, 30, WORLD_W, 1);
+  // the track: clay with white lane lines (user)
+  ovalPath(g, RXO + 2, RYO + 2); g.fillStyle = '#8f3f25'; g.fill();
+  ovalPath(g, RXO, RYO); g.fillStyle = '#c9613f'; g.fill();
+  g.strokeStyle = '#ffffff'; g.lineWidth = .7;
+  for (let j = 0; j <= LANES; j++) { ovalPath(g, RX0 + j * WX, RY0 + j * WY); g.stroke(); }
+  ovalPath(g, RX0 - .4, RY0 - .4); g.fillStyle = '#4aa856'; g.fill();
+  g.save(); ovalPath(g, RX0 - .4, RY0 - .4); g.clip();
+  for (let x = XL - RX0; x < XR + RX0; x += 40) { g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(x, CY - RY0, 20, RY0 * 2); }
+  g.restore();
+  const tw = title.length * 8 - 2; pxText(g, title, Math.round((XL + XR) / 2 - tw / 2), CY - 5, 'rgba(255,255,255,.55)', 2);
+  // finish line (right-hand end of the home straight) and the three exchange marks
+  g.fillStyle = '#ffffff'; g.fillRect(XR - 1, CY + RY0, 2, RYO - RY0);
+  for (let y = 0; y < RYO - RY0; y += 2) { g.fillStyle = (y / 2) % 2 ? '#1d1d27' : '#ffffff'; g.fillRect(XR + 1, CY + RY0 + y, 1, 2); }
+  g.fillStyle = '#ffd23f'; g.fillRect(XR - .5, CY - RYO, 1, RYO - RY0); g.fillRect(XL - .5, CY - RYO, 1, RYO - RY0); g.fillRect(XL - .5, CY + RY0, 1, RYO - RY0);
+  for (let k = 0; k < LANES; k++) pxText(g, String(k + 1), XR - 8, Math.round(CY + RY0 + (k + .5) * WY - 2), 'rgba(255,255,255,.8)');
+  return c;
+}
+function fit(){
+  const gs = getComputedStyle($('#game')), aw = innerWidth - parseFloat(gs.paddingLeft) - parseFloat(gs.paddingRight);
+  const ah = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight;   // the phone app measures the real screen (see the site wrapper)
+  CW = clamp(Math.round(CH * aw / ah), 320, 420);
+  if (cv.width !== CW * SS) { cv.width = CW * SS; cv.height = CH * SS; }
+  const s = Math.min(aw / CW, ah / CH);
+  cv.style.width = Math.floor(CW * s) + 'px'; cv.style.height = Math.floor(CH * s) + 'px';
+}
+addEventListener('resize', () => { if (R) fit(); });
+addEventListener('orientationchange', () => { setTimeout(() => { if (R) fit(); }, 250); setTimeout(() => { if (R) fit(); }, 700); });
+if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (R) fit(); });
+
+function banner(text, small = ''){ const b = $('#banner'); if (!text) { b.hidden = true; return; } b.hidden = false; b.innerHTML = esc(text) + (small ? `<small>${esc(small)}</small>` : ''); }
+function startRace(){
+  const M = G.meet, ev = EVENTS[M.ev], res = M.last;
+  const teams = res.map(o => { const t = M.teams[o.ti]; let c = 0;
+    return { t, user:t.user, lane:t.lane, U:{ J:t.c1, P:t.c2 }, runners:t.lineup.map(L => t.roster[L.i]), legs:o.legs, cum:o.legs.map(l => { const at = c; c += l.t; return at; }), total:o.total, place:o.place, ph:Math.random() * 4 }; });
+  R = { ev, teams, lf:ev.leg / 400, T:0, real:0, end:Math.max(...teams.map(t => t.total)), over:0, called:false };
+  trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY');
+  $('#evn').textContent = ev.name; $('#clk').textContent = '0.00'; $('#order').innerHTML = '';
+  $('#game').hidden = false; fit();
+  cam = WORLD_W - CW; lastT = performance.now();
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+}
+function endRace(){
+  cancelAnimationFrame(raf); R = null; banner(''); $('#game').hidden = true; render();
+}
+// everyone a team has on the track at race time T: the man with the baton, the ones waiting for it, and the one who just handed it on
+function teamEnts(tm, T){
+  const out = [], lf = R.lf, w = R.ev.watch, tau = .45;
+  const fin = T >= tm.total;
+  let i = 0; while (i < 3 && T >= tm.cum[i + 1]) i++;
+  const coast = k => {                                                // leg k is done: he eases down in his lane
+    const endAt = k === 3 ? tm.total : tm.cum[k + 1], d = (T - endAt) / w; if (k < 3 && d > 2.2) return;
+    const v = lf / tm.legs[k].t * w;
+    out.push({ r:tm.runners[k], u:(k + 1) * lf + v * tau * (1 - Math.exp(-d / tau)) * .8, run:d < 1.1, baton:k === 3 });
+  };
+  if (fin) coast(3);
+  else {
+    const leg = tm.legs[i], hold = i ? Math.max(0, leg.loss - .15) : 0, s = clamp((T - tm.cum[i] - hold) / (leg.t - hold), 0, 1);
+    out.push({ r:tm.runners[i], u:(i + (i ? s : Math.pow(s, 1.08))) * lf, run:T > 0 && s > 0, baton:true, lead:true });
+    if (i > 0) coast(i - 1);
+    for (let j = i + 1; j < 4; j++) if (j === i + 1 || R.ev.leg === 100) out.push({ r:tm.runners[j], u:j * lf + .0005, run:false });
+  }
+  return out;
+}
+const progress = (tm, T) => { if (T >= tm.total) return 100 - tm.total / 1000; let i = 0; while (i < 3 && T >= tm.cum[i + 1]) i++; return i + clamp((T - tm.cum[i]) / tm.legs[i].t, 0, 1); };
+let orderT = 0;
+function update(dt){
+  R.real += dt;
+  if (R.real < 1) banner('On your marks');
+  else if (R.real < 1.9) banner('Set');
+  else {
+    if (R.T === 0) banner('');
+    R.T += dt * R.ev.watch;
+    const mine = R.teams.find(t => t.user);
+    if (!R.called && R.T >= mine.total) { R.called = true; banner(ordinal(mine.place), fmt(mine.total)); }
+    if (R.T >= R.end) { R.over += dt; if (R.over > 2) return endRace(); }
+  }
+  $('#clk').textContent = fmt(Math.min(R.T, R.end));
+  if ((orderT -= dt) <= 0) { orderT = .2;
+    const ord = [...R.teams].sort((a, b) => progress(b, R.T) - progress(a, R.T));
+    $('#order').innerHTML = ord.map((tm, k) => `<span class="och ${tm.user ? 'me' : ''}">${k + 1}<i style="background:${tm.t.c1};border-color:${tm.t.c2}"></i>${esc(tm.t.abbr.slice(0, 4))}</span>`).join(''); }
+}
+function draw(dt){
+  const ents = [];
+  let focus = null;
+  for (const tm of R.teams) for (const e of teamEnts(tm, R.T)) { const p = lanePos(tm.lane, e.u); Object.assign(e, p, { tm }); ents.push(e); if (tm.user && e.lead) focus = e; }
+  if (!focus) focus = ents.find(e => e.tm.user && e.baton);
+  const want = clamp(focus.x - CW / 2, 0, WORLD_W - CW);
+  cam += (want - cam) * Math.min(1, dt * 7);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(trackCv, Math.round(cam * SS), 0, CW * SS, CH * SS, 0, 0, CW * SS, CH * SS);
+  ctx.setTransform(SS, 0, 0, SS, -Math.round(cam * SS), 0);
+  ents.sort((a, b) => a.y - b.y);
+  for (const e of ents) {
+    const frame = e.run ? 'run' + ((Math.floor(R.real * 11 + e.tm.ph) % 4 + 4) % 4) : 'stand', spr = sprite(e.r, e.tm.U, frame), w = 14 * SPR, h = spr.height * SPR, face = e.dx >= 0 ? 1 : -1;
+    ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect(e.x - 3, e.y - .8, 6, 1.6);
+    ctx.save(); ctx.translate(e.x, e.y); ctx.scale(face, 1); ctx.drawImage(spr, -w / 2, -h, w, h);
+    if (e.baton) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(3, -h * .5, 2.2, .9); }
+    ctx.restore();
+    if (e.tm.user && e.baton) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(e.x - 2, e.y - h - 4, 4, 1); ctx.fillRect(e.x - 1, e.y - h - 3, 2, 1); }
+  }
+}
+function loop(now){
+  const dt = clamp((now - lastT) / 1000, 0, .05); lastT = now;
+  update(dt); if (R) { draw(dt); raf = requestAnimationFrame(loop); }
+}
+$('#skipBtn').addEventListener('click', () => { if (R) endRace(); });
+
+/* ============================ boot ============================ */
+render();
+})();
+</script>
