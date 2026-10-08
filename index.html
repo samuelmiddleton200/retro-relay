@@ -1330,14 +1330,15 @@ function runnerAt(tm, i, T){
 }
 const smooth = v => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
 // a point on the screen for man i at m metres raced. 4x100 and 4x200: his own lane all the way. 4x400: his own lane
-// for the first lap, then lane 1, except that he takes and gives the baton out in his team's lane and cuts in and out
-// over about 30 m
+// for the first lap, then lane 1, cutting in and out over about 30 m around each exchange: the first one (after lap 1)
+// is out in his team's lane, the other two are in lanes 1 to 3
 function place(tm, i, m){
   const K = tm.lane;
   if (R.ev.leg !== 400 || tm.a[i] < 400) return lanePos(K, uOf(K, stagger(R.ev) * K + m));
   const inside = K * .2;                                              // the pack fans out a little so they don't run through each other
-  let lat = K + (inside - K) * smooth((m - tm.a[i] - 5) / 30);
-  if (i < 3) lat += (K - lat) * smooth((m - (tm.b[i] - 45)) / 30);
+  const from = i >= 2 ? tm.xl[i] : K, to = i < 3 ? tm.xl[i + 1] : 0;   // the lane he takes the baton in, and the one he gives it in
+  let lat = from + (inside - from) * smooth((m - tm.a[i] - 5) / 30);
+  if (i < 3) lat += (to - lat) * smooth((m - (tm.b[i] - 45)) / 30);
   // these exchanges are at the start of a bend, out in the team's lane, where a metre covers less of the bend than it
   // does in lane 1: count it that way through the exchange so the two men stay the right distance apart
   const wide = Math.max(1 - smooth((m - tm.a[i]) / 40), i < 3 && m >= tm.b[i] - ZONE ? 1 : 0);
@@ -1351,6 +1352,9 @@ function startRace(){
   $('#spdBtn').textContent = '1x';
   R.teams = res.map(o => raceTeam(o, M.teams[o.ti], ev));
   R.end = Math.max(...R.teams.map(t => t.total));
+  // 4x400, the exchanges after laps 2 and 3: the next men line up in lanes 1 to 3 in the order their teams are coming
+  // in (user): the leader's man on the inside, then lane 2, lane 3, and round again for the teams further back
+  for (const i of [2, 3]) [...R.teams].sort((x, y) => x.H[i] - y.H[i]).forEach((tm, r) => { (tm.xl ||= [])[i] = r % 3; });
   trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY', ev);
   $('#evn').textContent = ev.name; $('#clk').textContent = '0.00'; $('#order').innerHTML = '';
   $('#game').hidden = false; fit();
