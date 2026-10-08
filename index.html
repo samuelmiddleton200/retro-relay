@@ -1092,7 +1092,7 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-a]')
    Running is an 8-frame sprint cycle (user): the knee drives up folded, the leg reaches, lands under the body, pushes
    off behind and the heel kicks up; the arms pump opposite the legs. Angles are radians from straight down, positive
    toward the front. */
-const FW = 18, FH = 20, HX = 7, GROUND = 19, FIG = 1.5;               // sprite size in its own big pixels, hip x, ground line; FIG: one sprite pixel in track pixels
+const FW = 18, FH = 20, HX = 7, GROUND = 19, FIG = 1.25;               // sprite size in its own big pixels, hip x, ground line; FIG: one sprite pixel in track pixels
 const LEAN = [-.1, 0, .14, .24, .42, .62];                            // trunk lean: easing down, upright, jog, sprint, driving, out of the blocks
 const RUN_A = [.12, .70, .94, .70, .12, -.46, -.70, -.46];            // thigh angle through the cycle
 const RUN_K = [1.7, 1.25, .85, .3, .1, .12, .35, 1.15];               // knee fold through the cycle
@@ -1185,16 +1185,18 @@ const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].f
    drawn long enough for that, and a runner's place on a bend is worked out by distance along it, not by angle.
    The camera slides along with your runner on the straights; on a bend it stops going sideways and moves up or down.
    Nothing here decides anything: the times were set when you pressed Race. */
-/* The track is laid out like a real one: the bends are true half circles, so nobody whips round a tight tip. Lane 1's bend is as long on the screen as a straight (pi x 120 is about 378), which is what keeps the speed even.
-   It is drawn zoomed in (user), about 3.8 pixels a metre, so the track is much bigger than the screen and the camera
-   follows your runner sideways and up and down. */
-const CH = 180, SS = 4, LS = 378, RX0 = 118.5, RY0 = 118.5, LW = 7, LANES = 6, PAD = 16, STAND = 30;
+/* The track is laid out like a real one: the bends are true half circles, so nobody whips round a tight tip. Lane 1's bend is as long as a straight (pi x 210 is about 660), which is what keeps the speed even.
+   The track is much bigger than the screen (which shows about 55 m of it), so the camera follows your runner sideways
+   and up and down. */
+// Scale (user: runners must be under 3 m against the track): 6.6 pixels a metre, and a runner stands about 19 pixels,
+// so he is about 2.8 m tall; a lane is 9 pixels, about 1.4 m (a real one is 1.22 m).
+const CH = 180, SS = 4, LS = 660, RX0 = 210, RY0 = 210, LW = 9, LANES = 6, PAD = 16, STAND = 30;
 // The camera looks from the side of the home straight, tilted down (user: a side view like the other two games, not
 // straight down). The track itself is still laid out as it really is, with half-circle bends, and then everything
 // going away from the camera is squeezed by TILT. So a runner coming round the bend moves across the screen and only
 // a little up it, exactly as he would on TV, and nobody speeds up or whips round a corner.
 const TILT = .5;   // LW: every lane is the same width all the way round, bends and straights (user)
-const RXO = RX0 + LANES * LW, RYO = RY0 + LANES * LW, XL = PAD + RXO, XR = XL + LS, CY = STAND + 26 + RYO * TILT, WORLD_W = XR + RXO + PAD, WORLD_H = CY + RYO * TILT + 8;
+const RXO = RX0 + LANES * LW, RYO = RY0 + LANES * LW, XL = PAD + RXO, XR = XL + LS, CY = STAND + 60 + RYO * TILT, WORLD_W = XR + RXO + PAD, WORLD_H = CY + RYO * TILT + 8;
 const LANE_M = 7.5;                                                   // metres a lap gains per lane out
 const stagger = ev => LANE_M * (ev.leg === 100 ? 1 : 2);              // head start per lane out: the 4x100 is one lap in lanes; the 4x200 and 4x400 run two laps in lanes (user)
 let CW = 320, cam = 0, camY = 0, R = null, raf = 0, lastT = 0, trackCv = null;
@@ -1261,7 +1263,7 @@ function buildTrack(title, ev){
   g.save(); ovalPath(g, -.35); g.clip();
   for (let x = XL - RX0; x < XR + RX0; x += 40) { g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(x, CY - RY0 * TILT, 20, RY0 * 2 * TILT); }
   g.restore();
-  const tw = title.length * 8 - 2; pxText(g, title, Math.round((XL + XR) / 2 - tw / 2), CY - 5, 'rgba(255,255,255,.55)', 2);
+  const tw = title.length * 16 - 4; pxText(g, title, Math.round((XL + XR) / 2 - tw / 2), CY - 10, 'rgba(255,255,255,.5)', 4);
   // a line across one lane
   const tick = (k, u, col, w) => { const p = lanePos(k - .5, u), q = lanePos(k + .5, u); g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(q.x, q.y); g.stroke(); };
   // the finish line, and each lane's staggered start line
@@ -1419,10 +1421,10 @@ function draw(dt){
   ctx.setTransform(SS, 0, 0, SS, -Math.round(cam * SS), -Math.round(camY * SS));
   ents.sort((a, b) => a.y - b.y);
   for (const e of ents) {
-    ctx.globalAlpha = e.alpha * .28; ctx.fillStyle = '#000'; ctx.fillRect(e.x - 5, e.y - 1.2, 10, 2.4);
+    ctx.globalAlpha = e.alpha * .28; ctx.fillStyle = '#000'; ctx.fillRect(e.x - 4.5, e.y - 1, 9, 2);
     ctx.globalAlpha = e.alpha;
     ctx.save(); ctx.translate(e.x, e.y); ctx.scale(e.face * FIG, FIG); ctx.drawImage(e.spr, -HX, -GROUND); ctx.restore();
-    if (e.mark) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(e.x - 3, e.y - 29, 6, 1.5); ctx.fillRect(e.x - 1.5, e.y - 27.5, 3, 1.5); }
+    if (e.mark) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(e.x - 3, e.y - 26, 6, 1.5); ctx.fillRect(e.x - 1.5, e.y - 24.5, 3, 1.5); }
   }
   ctx.globalAlpha = 1;
 }
