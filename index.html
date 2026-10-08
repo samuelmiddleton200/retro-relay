@@ -399,7 +399,7 @@ input[type=text]{width:100%;background:var(--navy);border:3px solid var(--white)
 td.tl{text-align:left}
 .trow{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .dot{display:inline-block;width:11px;height:11px;border:2px solid;border-radius:2px;flex:none}
-.bests{display:grid;gap:1px;font-size:12px;margin-top:4px}.bests b{margin-left:4px}
+.bests{display:grid;grid-template-columns:auto 1fr 1fr;gap:1px 6px;font-size:12px;margin-top:4px;text-align:right}.bests .label{font-size:8px}
 .en{height:10px;background:#000;border:2px solid #000;border-radius:2px;min-width:0}.en i{display:block;height:100%}
 .tag{font-family:var(--px);font-size:10px;background:var(--yellow);color:#241a00;border-radius:3px;padding:1px 4px;text-align:center;justify-self:start}
 .tag.off{visibility:hidden}
@@ -563,7 +563,6 @@ const t200 = r => 2 * t100(r) + (60 - r.end) * .012;
 const t400 = r => 2 * t200(r) + 5.2 - (r.end - 50) * .05;
 const pbOf = (r, leg) => leg === 100 ? t100(r) : leg === 200 ? t200(r) : t400(r);
 const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}` : t.toFixed(2);
-const gauss = () => { let s = 0; for (let i = 0; i < 6; i++) s += Math.random(); return (s - 3) / .7071; };   // roughly a standard normal
 
 /* ---- runners: Speed (the 100), Endurance (holds it over 200 and 400, and tires less), Start (out of the blocks),
    Handoff (clean exchanges). All 1-99. ---- */
@@ -589,12 +588,13 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
           + up to 0.25 s out of the blocks on the lead-off leg (less with a good Start), or minus the flying start on legs 2-4
           x how hard he's told to run (Easy +2.5%, All out -1.2%)
           x tiredness: nothing at full energy, about +1% at 70, +3% at 50, +6% at 30
-          x the day: about +-0.8% (a tenth or two over 100 m, as the user asked)
+          x the day: anywhere from 1% quicker to 1% slower, evenly (user)
    and it costs him energy: 30 / 42 / 55 for a steady 100 / 200 / 400, more all out, less with good Endurance. */
 const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * .000012;
+const DAY = .01;                                                       // the day he's having: anywhere from 1% quicker to 1% slower (user), so a 12.20 man runs 12.08 to 12.32
 function legTime(r, ev, legIdx, effort, energy, luck = 0){
   const start = legIdx === 0 ? .25 - r.acc * .0025 : -ev.fly;
-  return (pbOf(r, ev.leg) + start) * EFFORT[effort].time * tired(energy) * (1 + luck * .008);
+  return (pbOf(r, ev.leg) + start) * EFFORT[effort].time * tired(energy) * (1 + luck * DAY);
 }
 const legCost = (r, ev, effort) => ev.cost * EFFORT[effort].cost * (1.25 - r.end / 200);
 // a baton exchange: about 0.1 to 0.5 s by the two runners' Handoff, more if the incoming man is spent, and now and then a bobble
@@ -622,7 +622,7 @@ function runEvent(meet, ev){
     let total = 0;
     lineup.forEach((L, i) => {
       const r = team.roster[L.i], en = team.energy[r.id] ?? 100;
-      let t = legTime(r, ev, i, L.effort, en, gauss()), ex = null;
+      let t = legTime(r, ev, i, L.effort, en, rnd(-1, 1)), ex = null;
       const after = clamp(en - legCost(r, ev, L.effort), 0, 100);
       if (i) { ex = exchange(team.roster[lineup[i - 1].i], r, legs[i - 1].after); t += ex.loss; }
       legs.push({ id:r.id, name:`${r.fn[0]}. ${r.ln}`, t, effort:L.effort, before:en, after, loss:ex ? ex.loss : 0, bobble:!!(ex && ex.bobble) });
@@ -701,6 +701,8 @@ function raceEvent(){
   res.forEach(o => { M.teams[o.ti].pts += o.pts; });
   const mine = res.find(o => M.teams[o.ti].user);
   mine.tp = RACE_TP[mine.place - 1] || 0; G.tp += mine.tp;
+  // personal bests: the fastest split each of your runners has actually run at this distance (user)
+  for (const l of mine.legs) { const r = G.roster.find(x => x.id === l.id); if (!r) continue; r.pb ||= {}; if (!r.pb[ev.leg] || l.t < r.pb[ev.leg]) { l.pb = true; r.pb[ev.leg] = l.t; } }
   // bests: the team's season best in each relay and your program records
   const T = me(); if (!T.best[ev.key] || mine.total < T.best[ev.key]) T.best[ev.key] = mine.total;
   const rec = G.records[ev.key]; mine.record = !rec || mine.total < rec.t; if (mine.record) G.records[ev.key] = { t:mine.total, season:G.season, school:G.school.abbr };
@@ -940,7 +942,7 @@ function runnerHTML(){
       <button class="btn sm" data-a="train" data-k="${k}" ${max || G.tp < cost ? 'disabled' : ''}>${max ? 'Maxed' : `+2 for ${cost} TP`}</button></div><div class="muted" style="font-size:12px;margin:-4px 0 8px">${RATE_DESC[k]}</div>`; }).join('');
   return topBar(esc(`${r.fn} ${r.ln}`), `<button class="btn sm" data-a="go" data-s="squad">Back</button>`) + `<div class="pp">
     <div class="face"><div class="top" style="background:${G.school.c1}"><img src="${portrait(r, G.school.c1)}" alt=""></div><div class="bot"><div class="px">${['Freshman', 'Sophomore', 'Junior', 'Senior'][r.year]}</div>
-      <div class="bests num">${[100, 200, 400].map(d => `<span>${d} m <b>${fmt(pbOf(r, d))}</b></span>`).join('')}</div></div></div>
+      <div class="bests num"><span class="label"></span><span class="label">Rated</span><span class="label">Best</span>${[100, 200, 400].map(d => `<span>${d}</span><b>${fmt(pbOf(r, d))}</b><b class="yellow">${r.pb && r.pb[d] ? fmt(r.pb[d]) : '-'}</b>`).join('')}</div></div></div>
     <div class="panel">${rows}</div></div>`;
 }
 function tableHTML(){
@@ -983,7 +985,7 @@ function lineupHTML(){
 function resultHTML(){
   const M = G.meet, ev = EVENTS[M.ev], res = M.last, mine = res.find(o => M.teams[o.ti].user);
   const rows = res.map(o => { const t = M.teams[o.ti]; return `<tr class="${t.user ? 'me' : ''}"><td class="num">${o.place}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${fmt(o.total)}</td><td class="num">+${o.pts}</td><td class="num">${t.pts}</td></tr>`; }).join('');
-  const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.bobble ? ' <span class="bad">bobbled</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
+  const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.bobble ? ' <span class="bad">bobbled</span>' : ''}${l.pb ? ' <span class="yellow">PB</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
   const next = M.ev + 1 < EVENTS.length ? `Next: ${EVENTS[M.ev + 1].name}` : 'Meet results';
   return `<div class="bar"><div class="box">Race ${M.ev + 1}/3</div><div class="title">${ev.name} results</div><span></span></div>
     <div class="two wide"><div class="panel"><table><tr><th>#</th><th style="text-align:left">Team</th><th>Time</th><th>Pts</th><th>Meet</th></tr>${rows}</table></div>
