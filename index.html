@@ -965,7 +965,9 @@ function recordsHTML(){
 /* ---- the meet: pick four, their order and how hard each one runs ---- */
 function lineupHTML(){
   const M = G.meet, ev = EVENTS[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= [null, null, null, null];
-  const rows = T.roster.map((r, i) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legTime(r, ev, 1, 1, en) - legTime(r, ev, 1, 1, 100);
+  // fastest first for this distance, as they are right now with tiredness counted (user)
+  const now = r => legTime(r, ev, 1, 1, T.energy[r.id]);
+  const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => now(a.r) - now(b.r)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legTime(r, ev, 1, 1, en) - legTime(r, ev, 1, 1, 100);
     return `<button class="rrow ${leg >= 0 ? 'on' : ''}" data-a="pickR" data-i="${i}"><img src="${portrait(r, G.school.c1)}" alt="">
       <span class="nm">${esc(short(r))} <span class="yr">${YEARS[r.year]}</span></span>
       <span class="num pb">${fmt(pbOf(r, ev.leg))}${slow >= .05 ? `<small>+${slow.toFixed(2)}</small>` : ''}</span>
@@ -1381,7 +1383,8 @@ function update(dt){
   }
   $('#clk').textContent = fmt(Math.min(R.T, R.end));
   if ((orderT -= dt) <= 0) { orderT = .2;
-    const ord = [...R.teams].sort((a, b) => batonAt(b, R.T) - batonAt(a, R.T));
+    // the race as it stands right now, by how far each baton has gone; level teams (and everyone before the gun) are in lane order
+    const ord = [...R.teams].sort((a, b) => batonAt(b, R.T) - batonAt(a, R.T) || a.lane - b.lane);
     $('#order').innerHTML = ord.map((tm, k) => `<span class="och ${tm.user ? 'me' : ''}">${k + 1}<i style="background:${tm.t.c1};border-color:${tm.t.c2}"></i>${esc(tm.t.abbr.slice(0, 4))}</span>`).join(''); }
 }
 function draw(dt){
