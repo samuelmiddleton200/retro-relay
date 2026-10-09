@@ -1469,7 +1469,7 @@ function loop(now){
   update(dt); if (R) { draw(dt); raf = requestAnimationFrame(loop); }
 }
 $('#skipBtn').addEventListener('click', () => { if (R) endRace(); });
-$('#spdBtn').addEventListener('click', () => { if (!R) return; R.speed = R.speed >= 8 ? 1 : R.speed * 2; $('#spdBtn').textContent = R.speed + 'x'; });
+$('#spdBtn').addEventListener('click', () => { if (!R) return; R.speed = R.speed >= 4 ? 1 : R.speed * 2; $('#spdBtn').textContent = R.speed + 'x'; });
 
 /* ============================ boot ============================ */
 render();
