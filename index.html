@@ -436,9 +436,9 @@ td.tl{text-align:left}
 .och i{width:8px;height:8px;border:1px solid #fff}
 .gbtn{top:auto;bottom:calc(8px + env(safe-area-inset-bottom) * .5)}
 /* what your next tap does, as words on the screen (user: not a button; a tap anywhere counts) */
-.tapmsg{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom) * .5);text-align:center;pointer-events:none;font-family:var(--px);font-size:13px;letter-spacing:.08em;color:#fff;opacity:.5;text-shadow:2px 2px 0 #000}
+.tapmsg{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom) * .5);text-align:center;pointer-events:none;font-family:var(--px);font-size:16px;letter-spacing:.08em;color:#4db8ff;opacity:.6;text-shadow:2px 2px 0 #000}
 .tapmsg.armed{opacity:.9}
-.tapmsg.hot{opacity:1;font-size:26px;color:var(--yellow)}
+.tapmsg.hot{opacity:1;font-size:30px;color:#4db8ff}
 @media (max-height:500px){
   .lu,.two{gap:8px}.rlist{gap:3px}.legs{gap:4px}
   .rrow{padding:3px 6px}
@@ -505,13 +505,14 @@ function giveLook(p){
 // fly: seconds a running start saves on legs 2-4; cost: energy a steady leg takes (four runners now run all three relays,
 // so the costs are lower than when two of six could sit one out); x: how fast the race plays (user: fixed, no speed button)
 const EVENTS = [
-  { key:'x100', name:'4x100', leg:100, fly:.6, cost:22, x:2 },
+  { key:'x100', name:'4x100', leg:100, fly:.6, cost:20, x:2 },
   { key:'x200', name:'4x200', leg:200, fly:.5, cost:30, x:4 },
-  { key:'x400', name:'4x400', leg:400, fly:.4, cost:40, x:4 },
+  { key:'x400', name:'4x400', leg:400, fly:.4, cost:45, x:4 },
 ];
 const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet points for places 1-6 in each relay
 const YEARS = ['FR', 'SO', 'JR', 'SR'];
-const EFFORT = [{ key:'easy', name:'Easy', time:1.025, cost:.72 }, { key:'steady', name:'Steady', time:1, cost:1 }, { key:'all', name:'All out', time:.988, cost:1.38 }];
+// (user: going all out in every race must not be free) All out is 2% quicker for 1.6 times the energy, Easy 3% slower for 0.6
+const EFFORT = [{ key:'easy', name:'Easy', time:1.03, cost:.6 }, { key:'steady', name:'Steady', time:1, cost:1 }, { key:'all', name:'All out', time:.98, cost:1.6 }];
 const RACE_TP = [3, 2, 1], MEET_TP = [6, 4, 2];                       // training points: top three in a relay, top three in the meet (doubled at championship meets)
 
 /* ---- schools: [name, short, singlet color, shorts color]. One uniform each (user): a singlet and shorts. ---- */
@@ -612,18 +613,21 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
 
 /* ---- a leg of a relay ----
    his running time = his best for the distance (less the flying start on legs 2-4)
-          x how hard he is told to run (Easy +2.5%, All out -1.2%)
+          x how hard he is told to run (Easy +3%, All out -2%)
           x tiredness (user): his speed fades as his energy drains DURING the leg, by the curve below: nothing at full
-            energy, 1% off at 70, 3% at 50, 6% at 30, 12% at empty. A fresh man running steady is exactly his rated time.
+            energy, 2% off at 70, 5% at 50, 10% at 30, 20% at empty. A fresh man running steady is exactly his rated time.
           x the day: anywhere from 1% quicker to 1% slower, evenly (user)
           and, if the team is not in the lead when he gets the baton, less his Hunt boost.
-   It costs him energy: 22 / 30 / 40 for a steady 100 / 200 / 400, more all out, less with good Endurance. */
-const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * .000012;
+   It costs him energy: 20 / 30 / 45 for a steady 100 / 200 / 400 (x1.6 all out, x0.6 easy), less with good Endurance,
+   and he gets half his Recovery back between races. An average high schooler (34s) who goes all out three times is
+   empty 60% of the way round his 400 and runs it about 11% slow; all steady he is about 3% slow by the 400. */
+const TIRE = .00002;
+const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * TIRE;
 // the average of that curve over a leg that starts at energy e0 and burns `cost` (anything past empty is run at empty)
 function tiredMean(e0, cost){
   if (cost <= 0) return tired(e0);
   const burn = Math.min(cost, e0), u0 = 100 - e0, u1 = u0 + burn;
-  const part = burn > 0 ? 1 + .000012 * (u1 ** 3 - u0 ** 3) / (3 * burn) : 0;
+  const part = burn > 0 ? 1 + TIRE * (u1 ** 3 - u0 ** 3) / (3 * burn) : 0;
   return (part * burn + tired(0) * (cost - burn)) / cost;
 }
 const DAY = .01;                                                     // the day he is having: anywhere from 1% quicker to 1% slower (user), so a 12.20 man runs 12.08 to 12.32
@@ -758,8 +762,13 @@ function raceEvent(){
   prepRace();
   return bookRace(runEvent(M, ev));
 }
-// the computer's coaches pick their order (all out at the championship meets)
-function prepRace(){ const M = G.meet, ev = EVENTS[M.ev]; M.teams.forEach(t => { if (!t.user) t.lineup = autoLineup(t, ev, M.big ? 2 : 1); }); }
+// the computer's coaches pick their order
+// and how hard: steady, except that in the last relay of the meet a man goes all out if he has enough left for it to be quicker
+function prepRace(){
+  const M = G.meet, ev = EVENTS[M.ev], last = M.ev === EVENTS.length - 1;
+  M.teams.forEach(t => { if (t.user) return; t.lineup = autoLineup(t, ev, 1);
+    if (last) t.lineup.forEach((x, i) => { const r = t.roster[x.i], en = t.energy[r.id] ?? 100; if (legRun(r, ev, i, 2, en) < legRun(r, ev, i, 1, en)) x.effort = 2; }); });
+}
 // a relay has been run (watched, or outright): energy, points, training points, bests
 function bookRace(res){
   const M = G.meet, ev = EVENTS[M.ev];
@@ -1399,7 +1408,7 @@ function banner(text, small = ''){ const b = $('#banner'); if (!text) { b.hidden
    not gone yet: that is where the time goes.
    What is drawn always adds up to the times the race is run in (H): each man's speed is shaped to fit his leg. */
 const ZONE = 6, REACH = 1.2, EASE = 25, RP = .3, ARM = 2;              // RP: the tap your incoming man is drawn expecting until you make it; ARM: live seconds before the cue that the prompt wakes up
-const STEPS_400 = 108;                                                // steps a runner takes in a lap; one turn of the 8-frame cycle is two steps
+const STEPS_400 = 90;                                                // steps a runner takes in a lap; one turn of the 8-frame cycle is two steps
 // how a man covers m0..m1 between t0 and t1: from speed v0 up to his cruise over the first strides, the cruise fading
 // with his energy (f0 to f1), and braking to half over the last 1.2 s if he has a baton to pass. p(T) is metres at time T.
 function mkProf(m0, m1, t0, t1, v0, f0, f1, brake, tu = 1.6){
@@ -1564,10 +1573,10 @@ function draw(dt){
         if (L !== 100 && i < 3) { alpha = clamp(1.6 - s.since, 0, 1); if (alpha <= 0) continue; }   // off the track before the others come round again
         o = { pose:'stand', baton:i === 3 };
       } else {
-        // his legs are tied to the ground he covers: STEPS_400 steps a lap (108: user asked for the stride 40% slower than the first 180), so 3.7 m a cycle step and the feet
+        // his legs are tied to the ground he covers: STEPS_400 steps a lap (90: user, down from 180 then 108), so 3.7 m a cycle step and the feet
         // don't slide. Sped up past about 2x that would blur, so the cycle tops out at 5 a second.
         const moved = tm.lx[i] === null ? 0 : Math.max(0, s.m - tm.lx[i]);
-        tm.ph[i] = (tm.ph[i] + Math.min(moved * STEPS_400 / 800, dt * 3)) % 1;
+        tm.ph[i] = (tm.ph[i] + Math.min(moved * STEPS_400 / 800, dt * 2.5)) % 1;
         o = { f:Math.floor(tm.ph[i] * 8) % 8, arm:'pump', lean:3 };
         if (s.st === 'carry') { o.baton = true; o.lean = i === 0 ? (s.m < 6 ? 5 : s.m < 16 ? 4 : 3) : 3; if (i < 3 && s.left < 5) o.arm = 'fwd'; }
         else if (s.st === 'go') { o.lean = s.s < .55 ? 4 : 3; if (s.s > .62) o.arm = 'back'; }
