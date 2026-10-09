@@ -435,9 +435,10 @@ td.tl{text-align:left}
 .och.me{border-color:var(--yellow);color:var(--yellow)}
 .och i{width:8px;height:8px;border:1px solid #fff}
 .gbtn{top:auto;bottom:calc(8px + env(safe-area-inset-bottom) * .5)}
-.gbtn.tap{min-width:128px;min-height:58px;font-size:14px;opacity:.45;touch-action:manipulation}
-.gbtn.tap.armed{opacity:.8}
-.gbtn.tap.hot{opacity:1;background:var(--yellow);color:#241800;border-color:#fff}
+/* what your next tap does, as words on the screen (user: not a button; a tap anywhere counts) */
+.tapmsg{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom) * .5);text-align:center;pointer-events:none;font-family:var(--px);font-size:13px;letter-spacing:.08em;color:#fff;opacity:.5;text-shadow:2px 2px 0 #000}
+.tapmsg.armed{opacity:.9}
+.tapmsg.hot{opacity:1;font-size:26px;color:var(--yellow)}
 @media (max-height:500px){
   .lu,.two{gap:8px}.rlist{gap:3px}.legs{gap:4px}
   .rrow{padding:3px 6px}
@@ -454,7 +455,7 @@ td.tl{text-align:left}
   <div class="stage" id="stage">
     <canvas id="court" width="640" height="360"></canvas>
     <div class="rhud"><div class="rbox"><span id="evn"></span><span class="num" id="clk">0.00</span></div><div class="order" id="order"></div></div>
-    <button class="btn gbtn tap" id="tapBtn">Start</button>
+    <div class="tapmsg" id="tapBtn"></div>
     <div class="banner" id="banner" hidden></div>
   </div>
 </div>
@@ -630,12 +631,12 @@ const legCost = (r, ev, effort) => ev.cost * EFFORT[effort].cost * (1.25 - r.end
 const fatigue = (r, ev, effort, energy) => tiredMean(energy, legCost(r, ev, effort)) / tiredMean(100, legCost(r, ev, 1));
 const legRun = (r, ev, legIdx, effort, energy, luck = 0) => (pbOf(r, ev.leg) - (legIdx ? ev.fly : 0)) * EFFORT[effort].time * fatigue(r, ev, effort, energy) * (1 + luck * DAY);
 /* Starts and handoffs (user): you tap them, and the quicker the tap the quicker the start or the pass. The other teams
-   get a random 0.2 to 0.45 s each time. A tap is live time and the race plays at ev.x (2x for the 4x100, 4x for the
+   get a random 0.3 to 0.5 s each time. A tap is live time and the race plays at ev.x (2x for the 4x100, 4x for the
    others), so 0.3 s is 0.6 or 1.2 s on the race clock. To keep the times where they were, the average computer tap
    (R0) costs what a start (SB) and a pass (XB) always did; quicker than that gains on it, slower loses.
    Too early (before the gun, or before the cue) counts as EARLY; no tap at all goes at RMAX. */
-const SB = .15, XB = .33, R0 = .325, RMAX = .6, EARLY = .45;
-const aiTap = () => rnd(.2, .45);
+const SB = .15, XB = .33, R0 = .4, RMAX = .65, EARLY = .5;
+const aiTap = () => rnd(.3, .5);
 // what a leg should take with an average tap: for the lineup screen and the computer's coaches (the Hunt boost is not counted)
 const legProj = (r, ev, i, effort, energy) => legRun(r, ev, i, effort, energy) + (i === 0 ? SB : 0) + (i < 3 ? XB : 0);
 function projected(team, ev, lineup){
@@ -1083,7 +1084,7 @@ function lineupHTML(){
 function resultHTML(){
   const M = G.meet, ev = EVENTS[M.ev], res = M.last, mine = res.find(o => M.teams[o.ti].user);
   const rows = res.map(o => { const t = M.teams[o.ti]; return `<tr class="${t.user ? 'me' : ''}"><td class="num">${o.place}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${fmt(o.total)}</td><td class="num">+${o.pts}</td><td class="num">${t.pts}</td></tr>`; }).join('');
-  const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.tap != null ? ` <span class="${l.early ? 'bad' : l.tap <= .25 ? 'good' : 'muted'}">${l.early ? 'early' : l.tap.toFixed(2)}</span>` : ''}${l.behind ? ' <span class="muted">hunt</span>' : ''}${l.pb ? ' <span class="yellow">PB</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
+  const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.tap != null ? ` <span class="${l.early ? 'bad' : l.tap < .3 ? 'good' : 'muted'}">${l.early ? 'early' : l.tap.toFixed(2)}</span>` : ''}${l.behind ? ' <span class="muted">hunt</span>' : ''}${l.pb ? ' <span class="yellow">PB</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
   const next = M.ev + 1 < EVENTS.length ? `Next: ${EVENTS[M.ev + 1].name}` : 'Meet results';
   return `<div class="bar"><div class="box">Race ${M.ev + 1}/3</div><div class="title">${ev.name} results</div><span></span></div>
     <div class="two wide"><div class="panel"><table><tr><th>#</th><th style="text-align:left">Team</th><th>Time</th><th>Pts</th><th>Meet</th></tr>${rows}</table></div>
@@ -1391,14 +1392,14 @@ if (window.visualViewport) visualViewport.addEventListener('resize', () => { if 
 function banner(text, small = ''){ const b = $('#banner'); if (!text) { b.hidden = true; return; } b.hidden = false; b.innerHTML = esc(text) + (small ? `<small>${esc(small)}</small>` : ''); }
 
 /* ---- the baton exchange (user) ----
-   The next man waits on his mark. When he is sent (your tap, or the computer's 0.2-0.45 s) he builds up from a stand
+   The next man waits on his mark. When he is sent (your tap, or the computer's 0.3-0.5 s) he builds up from a stand
    and takes the baton ZONE (6) metres past the mark at HALF speed, an arm's length (REACH) ahead of the man bringing
    it, who has braked from full speed to half over the last strides. Then he runs on up to full speed, and the man who
    handed it on eases down and stops about 25 m later. A late tap leaves the incoming man braking behind a man who has
    not gone yet: that is where the time goes.
    What is drawn always adds up to the times the race is run in (H): each man's speed is shaped to fit his leg. */
-const ZONE = 6, REACH = 1.2, EASE = 25, RP = .3, ARM = 2;              // RP: the tap your incoming man is drawn expecting until you make it; ARM: live seconds before the cue that the button wakes up
-const STEPS_400 = 180;                                                // steps a runner takes in a lap; one turn of the 8-frame cycle is two steps
+const ZONE = 6, REACH = 1.2, EASE = 25, RP = .3, ARM = 2;              // RP: the tap your incoming man is drawn expecting until you make it; ARM: live seconds before the cue that the prompt wakes up
+const STEPS_400 = 108;                                                // steps a runner takes in a lap; one turn of the 8-frame cycle is two steps
 // how a man covers m0..m1 between t0 and t1: from speed v0 up to his cruise over the first strides, the cruise fading
 // with his energy (f0 to f1), and braking to half over the last 1.2 s if he has a baton to pass. p(T) is metres at time T.
 function mkProf(m0, m1, t0, t1, v0, f0, f1, brake, tu = 1.6){
@@ -1489,7 +1490,7 @@ function endRace(){
 const batonAt = (tm, T) => { if (T >= tm.H[4]) return 1e5 - tm.H[4]; if (!(T >= tm.H[0])) return 0; let i = 0; while (i < 3 && T >= tm.H[i + 1]) i++; return tm.pos(i, T); };
 /* ---- your taps ----
    The start: tap after the gun; before it (once "Set" is up) is a false start and counts as EARLY.
-   A handoff: the button wakes up ARM seconds ahead and lights at the cue; tap then. Before the cue counts as EARLY.
+   A handoff: the words on the screen wake up ARM seconds ahead and light at the cue; tap then. Before the cue counts as EARLY.
    No tap within RMAX and he goes anyway. The time shown is your live reaction. */
 const say = (text, small = '') => { R.flash = { text, small, until:R.real + 1.1 }; };
 function userStart(tap, early){
@@ -1513,7 +1514,7 @@ function tap(){
   }
   const i = tm.next; if (i < 1 || i > 3 || tm.legs[i].tap !== null || tm.cue[i] === undefined) return;
   const T = (real - R.gun) * K, cue = tm.cue[i];
-  if (T < cue - ARM * K) return;                                       // the button is still asleep
+  if (T < cue - ARM * K) return;                                       // the prompt is still asleep
   if (T < cue) userGo(i, T, EARLY, true); else userGo(i, T, clamp((T - cue) / K, 0, RMAX), false);
 }
 let orderT = 0, tapLabel = '';
@@ -1539,7 +1540,7 @@ function update(dt){
   const i = me.next; let label = '', cls = '';
   if (me.legs[0].tap === null) { label = 'Start'; cls = R.real >= R.gun ? 'hot' : R.real >= R.setAt ? 'armed' : ''; }
   else if (i >= 1 && i <= 3 && me.legs[i].tap === null && me.cue[i] !== undefined) { label = 'Handoff'; cls = R.T >= me.cue[i] ? 'hot' : R.T >= me.cue[i] - ARM * K ? 'armed' : ''; }
-  if (label + cls !== tapLabel) { tapLabel = label + cls; const b = $('#tapBtn'); b.hidden = !label; b.textContent = cls === 'hot' ? (label === 'Start' ? 'Go!' : 'Handoff!') : label; b.className = 'btn gbtn tap ' + cls; }
+  if (label + cls !== tapLabel) { tapLabel = label + cls; const b = $('#tapBtn'); b.hidden = !label; b.textContent = cls === 'hot' ? (label === 'Start' ? 'Go! Tap!' : 'Handoff! Tap!') : cls === 'armed' ? (label === 'Start' ? 'Tap at the gun' : 'Handoff coming: tap on the cue') : label === 'Start' ? 'Tap anywhere to start' : 'Tap anywhere to hand off'; b.className = 'tapmsg ' + cls; }
   $('#clk').textContent = fmt(Math.min(R.T, R.end));
   if ((orderT -= dt) <= 0) { orderT = .2;
     // the race as it stands right now, by how far each baton has gone; level teams (and everyone before the gun) are in lane order
@@ -1563,10 +1564,10 @@ function draw(dt){
         if (L !== 100 && i < 3) { alpha = clamp(1.6 - s.since, 0, 1); if (alpha <= 0) continue; }   // off the track before the others come round again
         o = { pose:'stand', baton:i === 3 };
       } else {
-        // his legs are tied to the ground he covers: STEPS_400 (180) steps a lap (user), so 2.2 m a step and the feet
+        // his legs are tied to the ground he covers: STEPS_400 steps a lap (108: user asked for the stride 40% slower than the first 180), so 3.7 m a cycle step and the feet
         // don't slide. Sped up past about 2x that would blur, so the cycle tops out at 5 a second.
         const moved = tm.lx[i] === null ? 0 : Math.max(0, s.m - tm.lx[i]);
-        tm.ph[i] = (tm.ph[i] + Math.min(moved * STEPS_400 / 800, dt * 5)) % 1;
+        tm.ph[i] = (tm.ph[i] + Math.min(moved * STEPS_400 / 800, dt * 3)) % 1;
         o = { f:Math.floor(tm.ph[i] * 8) % 8, arm:'pump', lean:3 };
         if (s.st === 'carry') { o.baton = true; o.lean = i === 0 ? (s.m < 6 ? 5 : s.m < 16 ? 4 : 3) : 3; if (i < 3 && s.left < 5) o.arm = 'fwd'; }
         else if (s.st === 'go') { o.lean = s.s < .55 ? 4 : 3; if (s.s > .62) o.arm = 'back'; }
@@ -1598,7 +1599,7 @@ function loop(now){
   const dt = clamp((now - lastT) / 1000, 0, .05); lastT = now;
   update(dt); if (R) { draw(dt); raf = requestAnimationFrame(loop); }
 }
-// a tap anywhere on the race counts (the button is the reminder of what it does); so does the space bar
+// a tap anywhere on the race counts (the words at the bottom say what it will do); so does the space bar
 $('#stage').addEventListener('pointerdown', e => { e.preventDefault(); tap(); });
 addEventListener('keydown', e => { if (R && (e.code === 'Space' || e.code === 'Enter') && !e.repeat) { e.preventDefault(); tap(); } });
 
