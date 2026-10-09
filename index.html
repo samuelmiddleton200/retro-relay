@@ -549,7 +549,7 @@ const NATIONS = [['United States', 'USA', '#0a3161', '#b31942'], ['Jamaica', 'JA
 const school = (row, kind) => ({ name:row[0], abbr:row[1], c1:row[2], c2:row[3], tier:row[4] ?? 0, hire:!!row[5], kind });
 
 /* ---- how fast a team is: its level is the average Speed rating of its runners (0-99) ----
-   Speed turns into a 100 m best: 13.2 s at 0 down to 9.6 s at 100, so (user's benchmarks) an average high school runner
+   Ratings turn into times by pace(), below, so (user's benchmarks) an average high school runner
    (12.0) is about 33, state level (11.0) about 61, an elite college sprinter (10.3) about 80 and the world record 100. */
 const LEVELS = {
   hs:{ area:[27, 42], you:34, stage:[[40, 50], [50, 60], [58, 66]] },   // district, state, nationals fields
@@ -557,26 +557,27 @@ const LEVELS = {
   d1:{ tier:[0, 69, 73, 76, 79, 82], stage:[[76, 82], [79, 84]] },         // by tier; conference, NCAA final
   usa:{ you:88, field:[83, 89] },
 };
-// the best a runner's rating can get at each level: about 10.5 in high school, 10.2 in Division 2, 9.95 in Division 1
+// There is no ceiling by level any more (user): every runner, a high school freshman included, can be trained to 100,
+// the world-record runner. What stops a high schooler getting there is the price and the four years he has.
+// (CAP is what the ceilings used to be; nothing reads it now.)
 const CAP = { hs:74, d2:82, d1:90, usa:97 };
 /* The program: the level your freshmen arrive at. It starts where the school is and moves with your seasons: down 1 for
    missing the championship meets, up about 1.6 for each round you get through, never below where the school started and
    never more than PROG_UP above it (winning does not turn a small college into a powerhouse: you move up by taking jobs). */
 const PROG_UP = { hs:24, d2:8, d1:5 };
-/* What training is worth (user): an upgrade is ONE point, and takes 0.5 / 0.375 / 0.25% off his 100 / 200 / 400 for Speed
-   and the opposite, 0.25 / 0.375 / 0.5%, for Endurance.
-   Those rates are for the points he has TRAINED. The ratings a runner has by nature (r.b: what he was made with, plus
-   the year-to-year growth) turn into times by the original formulas, which is what keeps every team in the game on the
-   benchmark times above. (At the trained rates the natural spread inside one team was worth twice as much, and the
-   best four of a high school nationals team ran 36-37 for the 4x100: user, "that's not right".) */
-const SPD_PT = { 100:.005, 200:.00375, 400:.0025 }, END_PT = { 100:.0025, 200:.00375, 400:.005 };
-const baseOf = r => r.b ??= Object.fromEntries(RATE.map(k => [k, r[k]]));
-const up = (r, k) => r[k] - baseOf(r)[k];                              // points gained by training
-const nat100 = b => 13.2 - .036 * b.spd, nat200 = b => 2 * nat100(b) + (60 - b.end) * .012, nat400 = b => 2 * nat200(b) + 5.2 - (b.end - 50) * .05;
-const rated = (r, d, nat) => nat(baseOf(r)) * Math.max(.5, 1 - up(r, 'spd') * SPD_PT[d]) * Math.max(.5, 1 - up(r, 'end') * END_PT[d]);
-const t100 = r => rated(r, 100, nat100);
-const t200 = r => rated(r, 200, nat200);
-const t400 = r => rated(r, 400, nat400);
+/* Times (user): a runner with 100 Speed and 100 Endurance, the most anyone can have, runs 9.40 / 18.80 / 42.50.
+   From there it is one straight line down through the benchmarks: pace(x) is seconds per 100 m at a rating of x, 11.95
+   at 34 (an average high school runner), 10.91 at 61 (state level), 10.17 at 80 (college elite), 9.40 at 100.
+   The rating that goes in is a blend: the 100 is two parts Speed to one Endurance, the 200 half and half, the 400 one
+   part Speed to two Endurance, and the 400 also carries the cost of the second half of the lap (4.9 s at 100
+   Endurance, 0.03 s more for every point under it).
+   So a point is worth the same whoever has it and however he got it: Speed 0.026 / 0.039 / 0.052 s off the
+   100 / 200 / 400, Endurance 0.013 / 0.039 / 0.133 s. (The percentages tried before this, 0.5% a point and the like,
+   could not be had together with a 9.40 ceiling: 66 points at 0.5% is a third off a 12.0.) */
+const pace = x => 13.27 - .0387 * x;
+const t100 = r => pace((2 * r.spd + r.end) / 3);
+const t200 = r => 2 * pace((r.spd + r.end) / 2);
+const t400 = r => 4 * pace((r.spd + 2 * r.end) / 3) + 4.9 + (100 - r.end) * .03;
 const pbOf = (r, leg) => leg === 100 ? t100(r) : leg === 200 ? t200(r) : t400(r);
 const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}` : t.toFixed(2);
 
@@ -586,11 +587,11 @@ const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
    back after each race. Starts and handoffs are not ratings any more: you tap them (see the race). */
 const RATE = ['spd', 'end', 'hunt', 'rec'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', hunt:'Hunt', rec:'Recovery' };
-const RATE_DESC = { spd:'Every Speed upgrade takes 0.5% off his 100, 0.375% off his 200 and 0.25% off his 400.',
-  end:'Every Endurance upgrade takes 0.25% off his 100, 0.375% off his 200 and 0.5% off his 400, and a race costs him less energy.',
+const RATE_DESC = { spd:'Every Speed upgrade takes 0.026 s off his 100, 0.039 s off his 200 and 0.052 s off his 400. 100 Speed and 100 Endurance is 9.40 / 18.80 / 42.50.',
+  end:'Every Endurance upgrade takes 0.013 s off his 100, 0.039 s off his 200 and 0.133 s off his 400, and a race costs him less energy.',
   hunt:'Every Hunt upgrade over 50 is a 0.1% speed boost on a leg he starts when the team is not in the lead (never on the first leg).',
   rec:'He gets half his Recovery back in energy after every race: 30 gives 15 back, so each upgrade is 0.5 more.' };
-const capOf = k => k === 'hunt' ? 100 : CAP[G.level];
+const capOf = k => 100;
 const huntOf = r => clamp((r.hunt - 50) * .001, 0, .05);
 function makeRunner(level, year = ri(0, 3)){
   const p = giveLook({ id:uid(), fn:pick(FIRST), ln:pick(LAST), num:ri(1, 99), year, tr:{} });
@@ -600,7 +601,6 @@ function makeRunner(level, year = ri(0, 3)){
   p.end = clamp(Math.round(base + type[1] + rnd(-9, 9)), 1, 99);
   p.hunt = clamp(Math.round(50 + level * .2 + rnd(-4, 8)), 50, 100);
   p.rec = clamp(Math.round(base + rnd(-10, 10)), 1, 99);
-  p.b = Object.fromEntries(RATE.map(k => [k, p[k]]));
   return p;
 }
 // four runners, one in each class (user: four is the whole team, everyone runs every relay)
@@ -714,7 +714,7 @@ function buildLeague(){
 }
 function newCareer(abbr){
   const sc = school(HS.find(r => r[1] === abbr), 'hs');
-  G = { v:2, level:'hs', school:sc, season:1, year:1, phase:'meets', meetNo:0, tp:0, prog:LEVELS.hs.you, prog0:LEVELS.hs.you, roster:squad(LEVELS.hs.you), history:[], records:{}, offers:[], meet:null, last:null, titles:0, gold:0 };
+  G = { v:3, level:'hs', school:sc, season:1, year:1, phase:'meets', meetNo:0, tp:0, prog:LEVELS.hs.you, prog0:LEVELS.hs.you, roster:squad(LEVELS.hs.you), history:[], records:{}, offers:[], meet:null, last:null, titles:0, gold:0 };
   buildLeague();
 }
 const STAGES = { hs:['District', 'State', 'Nationals'], d2:['Conference', 'D2 Nationals'], d1:['Conference', 'NCAA Championships'], usa:['Olympic Games'] };
@@ -844,7 +844,7 @@ function endSeason(finish, reach){
   G.prog = clamp(G.prog + (reach ? reach * 1.6 : -1), G.prog0, G.prog0 + PROG_UP[L]);
   for (const r of G.roster) {
     const before = t100(r);
-    for (const k of RATE) { const was = r[k]; r[k] = Math.max(r[k], clamp(r[k] + ri(1, [5, 4, 3, 2][r.year]), 1, capOf(k))); baseOf(r)[k] += r[k] - was; }   // growing up is natural, not training
+    for (const k of RATE) { r[k] = Math.max(r[k], clamp(r[k] + ri(1, [5, 4, 3, 2][r.year]), 1, capOf(k))); }
     if (r.year >= 3) G.off.gone.push(`${r.fn} ${r.ln}`); else G.off.grew.push({ name:`${r.fn[0]}. ${r.ln}`, yr:YEARS[r.year + 1], from:before, to:t100(r) });
   }
 }
@@ -888,26 +888,26 @@ function buildLeagueUSA(){ G.teams = [{ ...G.school, id:'USA', user:true, roster
 const trainCost = (r, k) => k === 'hunt' ? 1 + Math.floor((r.tr[k] || 0) / 3) : 2 + (r.tr[k] || 0) + Math.max(0, Math.floor((r[k] - 55) / 5));
 
 /* Saves from before the four-runner, tap-the-handoff game (v1): each runner's Start becomes Hunt and his Handoff becomes
-   Recovery, his trained Speed and Endurance points are halved (an upgrade used to be 2 points at half the rate, so his
-   times do not move), teams are cut to their four best, and a meet that was under way starts again. */
+   Recovery, teams are cut to their four best, and a meet that was under way starts again.
+   Saves from the first tap build (v2) had trained Speed and Endurance points worth about twice what a point is worth
+   now, so those points are doubled to keep the runner about as fast as he was. */
 function upgradeRunner(r){
   if (r.hunt != null) return;
   const tr = r.tr || {}, b = r.b || Object.fromEntries(['spd', 'end', 'acc', 'hnd'].map(k => [k, (r[k] ?? 40) - 2 * (tr[k] || 0)]));
-  for (const k of ['spd', 'end']) r[k] = b[k] + Math.round((r[k] - b[k]) / 2);
   r.hunt = clamp(Math.round(50 + (b.acc ?? 40) * .2) + (tr.acc || 0), 50, 100); r.rec = clamp(r.hnd ?? 40, 1, 99);
-  r.b = { spd:b.spd, end:b.end, hunt:r.hunt, rec:r.rec };
   r.tr = { spd:tr.spd || 0, end:tr.end || 0, hunt:tr.acc || 0, rec:tr.hnd || 0 };
   delete r.acc; delete r.hnd; delete r.lv;
 }
 function migrate(g){
-  if ((g.v || 1) >= 2) return;
+  if ((g.v || 1) >= 3) return;
   const lists = [g.roster, ...(g.teams || []).map(t => t.roster), g.off && g.off.class, g.off && g.off.signed, g.college && g.college.roster].filter(Boolean);
+  if (g.v === 2) { lists.forEach(l => l.forEach(r => { if (r.b) { for (const k of ['spd', 'end']) r[k] = clamp(r[k] + Math.max(0, r[k] - r.b[k]), 1, 100); delete r.b; } })); g.v = 3; return; }
   lists.forEach(l => l.forEach(upgradeRunner));
   const best = l => [...l].sort((a, b) => t100(a) + t200(a) / 2 + t400(a) / 4 - (t100(b) + t200(b) / 2 + t400(b) / 4)).slice(0, SQUAD);
   g.roster = best(g.roster); (g.teams || []).forEach(t => { t.roster = t.user ? g.roster : best(t.roster); });
   if (g.college) g.college.roster = best(g.college.roster);
   if (g.off && g.off.picks) { g.off.picks = Math.min(g.off.picks, g.roster.filter(r => r.year >= 3).length || 1); g.off.sel = []; g.off.signed = []; }
-  g.meet = null; g.lineup = null; g.v = 2;
+  g.meet = null; g.lineup = null; g.v = 3;
 }
 
 /* ============================ saving ============================ */
