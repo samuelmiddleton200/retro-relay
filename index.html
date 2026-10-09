@@ -152,6 +152,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .card .fa-x div{display:flex;justify-content:space-between;gap:4px;white-space:nowrap}
 .card .fa-x span{color:#ffe0d2}
 .card .fa-x b{color:var(--white);font-size:12px}
+.card .fa-x b.t100{color:#7dff95}.card .fa-x b.t200{color:#ffb347}.card .fa-x b.t400{color:#ff6b5e}
 .card .fa-x .sh{display:none}                                       /* short labels, for narrow phone cards */
 .card .fnm{font-family:var(--px);font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .sal{font-family:var(--px);font-size:12px}
@@ -558,9 +559,18 @@ const CAP = { hs:74, d2:82, d1:90, usa:97 };
    missing the championship meets, up about 1.6 for each round you get through, never below where the school started and
    never more than PROG_UP above it (winning does not turn a small college into a powerhouse: you move up by taking jobs). */
 const PROG_UP = { hs:24, d2:8, d1:5 };
-const t100 = r => 13.2 - .036 * r.spd;
-const t200 = r => 2 * t100(r) + (60 - r.end) * .012;
-const t400 = r => 2 * t200(r) + 5.2 - (r.end - 50) * .05;
+/* Speed and Endurance (user): a training upgrade (+2) is worth 1 / 0.75 / 0.5% off his 100 / 200 / 400 for Speed and the
+   opposite, 0.5 / 0.75 / 1%, for Endurance, so half of that a point. The percentages are taken from the level he arrived
+   at (r.lv, set when he is made): a runner whose Speed and Endurance both sit at his level runs exactly the benchmark
+   times above, at any level, and everything he gains or lacks from there moves his times by these percentages.
+   (Runners from saves older than this take their Speed as their level the first time they are timed.) */
+const SPD_PT = { 100:.005, 200:.00375, 400:.0025 }, END_PT = { 100:.0025, 200:.00375, 400:.005 };
+const lvOf = r => r.lv ??= r.spd;
+const base100 = lv => 13.2 - .036 * lv, base200 = lv => 2 * base100(lv) + (60 - lv) * .012, base400 = lv => 2 * base200(lv) + 5.2 - (lv - 50) * .05;
+const rated = (r, d, base) => { const lv = lvOf(r); return base(lv) * Math.max(.5, 1 - (r.spd - lv) * SPD_PT[d]) * Math.max(.5, 1 - (r.end - lv) * END_PT[d]); };
+const t100 = r => rated(r, 100, base100);
+const t200 = r => rated(r, 200, base200);
+const t400 = r => rated(r, 400, base400);
 const pbOf = (r, leg) => leg === 100 ? t100(r) : leg === 200 ? t200(r) : t400(r);
 const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}` : t.toFixed(2);
 
@@ -568,10 +578,11 @@ const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
    Handoff (clean exchanges). All 1-99. ---- */
 const RATE = ['spd', 'end', 'acc', 'hnd'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', acc:'Start', hnd:'Handoff' };
-const RATE_DESC = { spd:'His 100 m. Every point is 0.036 s.', end:'Holds his speed over 200 and 400, and tires less between races.', acc:'Out of the blocks: matters on the lead-off leg.', hnd:'Cleaner baton exchanges, fewer bobbles.' };
+const RATE_DESC = { spd:'Every point is 0.5% off his 100, 0.375% off his 200 and 0.25% off his 400.', end:'Every point is 0.25% off his 100, 0.375% off his 200 and 0.5% off his 400, and he tires less between races.', acc:'Out of the blocks: lead-off leg only. Every point is 0.05 s, whatever the distance.', hnd:'Passing the baton: legs 1 to 3 only (the anchor never passes). Every point is 0.05 s, and fewer bobbles.' };
 function makeRunner(level, year = ri(0, 3)){
   const p = giveLook({ id:uid(), fn:pick(FIRST), ln:pick(LAST), num:ri(1, 99), year, tr:{} });
   const base = level + [-4, -1.5, 1, 3][year];
+  p.lv = base;
   const type = pick([[3, -5], [0, 0], [0, 0], [-3, 6]]);                // a pure sprinter, an all-rounder, or a quarter-miler
   p.spd = clamp(Math.round(base + type[0] + rnd(-5, 5)), 1, 99);
   p.end = clamp(Math.round(base + type[1] + rnd(-9, 9)), 1, 99);
@@ -585,35 +596,47 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
 
 /* ---- a leg of a relay ----
    time = his best for the distance
-          + up to 0.25 s out of the blocks on the lead-off leg (less with a good Start), or minus the flying start on legs 2-4
+          + the blocks on the lead-off leg (0.15 s for a par starter, 0.05 s less per point of Start), or minus the flying start on legs 2-4
           x how hard he's told to run (Easy +2.5%, All out -1.2%)
           x tiredness: nothing at full energy, about +1% at 70, +3% at 50, +6% at 30
           x the day: anywhere from 1% quicker to 1% slower, evenly (user)
    and it costs him energy: 30 / 42 / 55 for a steady 100 / 200 / 400, more all out, less with good Endurance. */
 const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * .000012;
-const DAY = .01;                                                       // the day he's having: anywhere from 1% quicker to 1% slower (user), so a 12.20 man runs 12.08 to 12.32
+/* Start and Handoff (user): a training upgrade (+2) is worth about 0.1 s, the same in the 100 as in the 400, so 0.05 s a
+   point. Start counts on the lead-off leg only, Handoff for the man passing the baton only. Both are measured against a
+   par for the level you coach at (about what the teams there have), so the benchmark times hold from high school to the
+   Olympics: a par starter loses 0.15 s to the blocks and a par pass costs about 0.3 s. Better than par can go negative. */
+const PT = .05, START_PAR = { hs:40, d2:67, d1:76, usa:86 }, HAND_PAR = { hs:58, d2:68, d1:72, usa:76 };
+const startLoss = r => .15 + ((START_PAR[G?.level] ?? 60) - r.acc) * PT;
+const DAY = .01;                                                     // the day he's having: anywhere from 1% quicker to 1% slower (user), so a 12.20 man runs 12.08 to 12.32
 function legTime(r, ev, legIdx, effort, energy, luck = 0){
-  const start = legIdx === 0 ? .25 - r.acc * .0025 : -ev.fly;
+  const start = legIdx === 0 ? startLoss(r) : -ev.fly;
   return (pbOf(r, ev.leg) + start) * EFFORT[effort].time * tired(energy) * (1 + luck * DAY);
 }
 const legCost = (r, ev, effort) => ev.cost * EFFORT[effort].cost * (1.25 - r.end / 200);
-// a baton exchange: about 0.1 to 0.5 s by the two runners' Handoff, more if the incoming man is spent, and now and then a bobble
+// a baton exchange: it is the man passing the baton whose Handoff counts (user: the anchor's does nothing), 0.05 s a point
+// around the same par; more if he comes in spent, and now and then a bobble. A slick pass can come out better than par (negative).
+const passLoss = a => .26 + ((HAND_PAR[G?.level] ?? 65) - a.hnd) * PT;
 function exchange(a, b, energyAfter){
-  const h = (a.hnd + b.hnd) / 2, bobble = Math.random() < clamp(.02 + (60 - h) * .0012, .004, .09);
-  return { loss:.12 + (100 - h) * .004 + rnd(0, .12) + (energyAfter < 25 ? .15 : 0) + (bobble ? rnd(.7, 1.2) : 0), bobble };
+  const bobble = Math.random() < clamp(.02 + (60 - a.hnd) * .0012, .004, .09);
+  return { loss:passLoss(a) + rnd(0, .12) + (energyAfter < 25 ? .15 : 0) + (bobble ? rnd(.7, 1.2) : 0), bobble };
 }
 // what a team would run with this lineup, without luck: used for the projected times on the lineup screen and by the computer's coaches
+// one man's leg: his run (blocks or flying start) plus, on legs 1-3, the pass he makes at the end of it (user: his own Start and Handoff show in his own time)
+const legProj = (r, ev, i, effort, energy) => legTime(r, ev, i, effort, energy) + (i < 3 ? passLoss(r) + .06 : 0);
 function projected(team, ev, lineup){
   let t = 0;
-  lineup.forEach((L, i) => { const r = team.roster[L.i]; t += legTime(r, ev, i, L.effort, team.energy[r.id] ?? 100); if (i) t += .12 + (100 - (r.hnd + team.roster[lineup[i - 1].i].hnd) / 2) * .004 + .06; });
+  lineup.forEach((L, i) => { const r = team.roster[L.i]; t += legProj(r, ev, i, L.effort, team.energy[r.id] ?? 100); });
   return t;
 }
 // the computer's lineup (and your Auto button): the four with the best times for this distance as they are right now,
-// quickest starter first, the fastest man on the anchor
+// a good starter first and a poor passer on the anchor (his Handoff is never used), whichever pair saves the most
 function autoLineup(team, ev, effort = 1){
-  const idx = team.roster.map((r, i) => ({ i, t:legTime(r, ev, 1, effort, team.energy[r.id] ?? 100), acc:r.acc })).sort((a, b) => a.t - b.t).slice(0, 4);
-  const lead = idx.slice().sort((a, b) => b.acc - a.acc)[0], rest = idx.filter(x => x !== lead).sort((a, b) => b.t - a.t);
-  return [lead, ...rest].map(x => ({ i:x.i, effort }));
+  const idx = team.roster.map((r, i) => ({ i, t:legTime(r, ev, 1, effort, team.energy[r.id] ?? 100), acc:r.acc, hnd:r.hnd })).sort((a, b) => a.t - b.t).slice(0, 4);
+  let lead = idx[0], anchor = idx[1];
+  for (const a of idx) for (const b of idx) if (a !== b && a.acc - b.hnd > lead.acc - anchor.hnd) { lead = a; anchor = b; }
+  const mid = idx.filter(x => x !== lead && x !== anchor).sort((a, b) => b.t - a.t);
+  return [lead, ...mid, anchor].map(x => ({ i:x.i, effort }));
 }
 // run one relay for every team in the meet: returns each team's legs and total, slowest to... sorted fastest first
 function runEvent(meet, ev){
@@ -624,8 +647,9 @@ function runEvent(meet, ev){
       const r = team.roster[L.i], en = team.energy[r.id] ?? 100;
       let t = legTime(r, ev, i, L.effort, en, rnd(-1, 1)), ex = null;
       const after = clamp(en - legCost(r, ev, L.effort), 0, 100);
-      if (i) { ex = exchange(team.roster[lineup[i - 1].i], r, legs[i - 1].after); t += ex.loss; }
-      legs.push({ id:r.id, name:`${r.fn[0]}. ${r.ln}`, t, effort:L.effort, before:en, after, loss:ex ? ex.loss : 0, bobble:!!(ex && ex.bobble) });
+      // the pass goes on the split of the man who made it (it is his Handoff); `loss` stays with the receiver for the stutter in the playback
+      if (i) { ex = exchange(team.roster[lineup[i - 1].i], r, legs[i - 1].after); legs[i - 1].t += ex.loss; legs[i - 1].bobble = ex.bobble; total += ex.loss; }
+      legs.push({ id:r.id, name:`${r.fn[0]}. ${r.ln}`, t, effort:L.effort, before:en, after, loss:ex ? ex.loss : 0, bobble:false });
       total += t;
     });
     return { ti, total, legs };
@@ -926,10 +950,13 @@ function hubHTML(){
     </div></div>
     <div class="cards six" style="margin-top:10px">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>`;
 }
+// your four best at each distance get that distance's color on their time (user): 100 green, 200 orange, 400 red
+const TOP4 = { 100:'t100', 200:'t200', 400:'t400' };
+const top4 = (r, d) => G.roster.includes(r) && G.roster.filter(x => pbOf(x, d) < pbOf(r, d)).length < 4;
 function runnerCard(r, extra = '', cls = '', attrs = ''){
   return `<button class="card ${cls}" ${attrs}><div class="top" style="background:${G.school.c1}"><span class="pos">${YEARS[r.year]}</span><img src="${portrait(r, G.school.c1)}" alt=""></div>
     <div class="bot"><div class="fnm">${esc(r.fn)}</div><div class="nm">${esc(r.ln)}</div>
-    <div class="fa-x">${[100, 200, 400].map(d => `<div><span>${d}</span><b class="num">${fmt(pbOf(r, d))}</b></div>`).join('')}</div>${extra}</div></button>`;
+    <div class="fa-x">${[100, 200, 400].map(d => `<div><span>${d}</span><b class="num ${top4(r, d) ? TOP4[d] : ''}">${fmt(pbOf(r, d))}</b></div>`).join('')}</div>${extra}</div></button>`;
 }
 function squadHTML(){
   return topBar('Squad', backBtn) + `<div class="cards six">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>
@@ -977,7 +1004,7 @@ function lineupHTML(){
     if (!x) return `<div class="leg empty"><span class="label">${what}</span><span class="muted">Tap a runner</span></div>`;
     const r = T.roster[x.i], en = T.energy[r.id], after = clamp(en - legCost(r, ev, x.effort), 0, 100);
     return `<div class="leg"><span class="label">${what}</span><button class="lname" data-a="dropLeg" data-l="${i}">${esc(short(r))}<span class="after" style="color:${enColor(after)}">${Math.round(en)} to ${Math.round(after)}</span></button>
-      <button class="btn sm eff e${x.effort}" data-a="effort" data-l="${i}">${EFFORT[x.effort].name}</button><b class="num">${fmt(legTime(r, ev, i, x.effort, en))}</b></div>`; }).join('');
+      <button class="btn sm eff e${x.effort}" data-a="effort" data-l="${i}">${EFFORT[x.effort].name}</button><b class="num">${fmt(legProj(r, ev, i, x.effort, en))}</b></div>`; }).join('');
   return `<div class="bar"><div class="box">Race ${M.ev + 1}/3</div><div class="title">${ev.name} <span class="st">${esc(M.title)}</span></div><div class="box num">${T.pts} <span class="yellow">PTS</span></div></div>
     <div class="lu"><div class="panel rlist"><div class="rhead label"><span></span><span>Runner</span><span>${ev.leg} m best</span><span>Energy</span><span></span></div>${rows}</div>
     <div class="panel legs">${legs}
