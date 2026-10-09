@@ -559,18 +559,21 @@ const CAP = { hs:74, d2:82, d1:90, usa:97 };
    missing the championship meets, up about 1.6 for each round you get through, never below where the school started and
    never more than PROG_UP above it (winning does not turn a small college into a powerhouse: you move up by taking jobs). */
 const PROG_UP = { hs:24, d2:8, d1:5 };
-/* Speed and Endurance (user): a training upgrade (+2) is worth 1 / 0.75 / 0.5% off his 100 / 200 / 400 for Speed and the
-   opposite, 0.5 / 0.75 / 1%, for Endurance, so half of that a point. The percentages are taken from the level he arrived
-   at (r.lv, set when he is made): a runner whose Speed and Endurance both sit at his level runs exactly the benchmark
-   times above, at any level, and everything he gains or lacks from there moves his times by these percentages.
-   (Runners from saves older than this take their Speed as their level the first time they are timed.) */
+/* What training is worth (user): an upgrade (+2) takes 1 / 0.75 / 0.5% off his 100 / 200 / 400 for Speed and the opposite,
+   0.5 / 0.75 / 1%, for Endurance; Start and Handoff are 0.1 s an upgrade (see the leg, below). So half of that a point.
+   Those rates are for the points he has TRAINED. The ratings a runner has by nature (r.b: what he was made with, plus
+   the year-to-year growth) turn into times by the original formulas, which is what keeps every team in the game on the
+   benchmark times above. (At the trained rates the natural spread inside one team was worth twice as much, and the
+   best four of a high school nationals team ran 36-37 for the 4x100: user, "that's not right".)
+   Runners from older saves get r.b the first time they are timed: their ratings less the upgrades they have had. */
 const SPD_PT = { 100:.005, 200:.00375, 400:.0025 }, END_PT = { 100:.0025, 200:.00375, 400:.005 };
-const lvOf = r => r.lv ??= r.spd;
-const base100 = lv => 13.2 - .036 * lv, base200 = lv => 2 * base100(lv) + (60 - lv) * .012, base400 = lv => 2 * base200(lv) + 5.2 - (lv - 50) * .05;
-const rated = (r, d, base) => { const lv = lvOf(r); return base(lv) * Math.max(.5, 1 - (r.spd - lv) * SPD_PT[d]) * Math.max(.5, 1 - (r.end - lv) * END_PT[d]); };
-const t100 = r => rated(r, 100, base100);
-const t200 = r => rated(r, 200, base200);
-const t400 = r => rated(r, 400, base400);
+const baseOf = r => r.b ??= Object.fromEntries(RATE.map(k => [k, r[k] - 2 * ((r.tr && r.tr[k]) || 0)]));
+const up = (r, k) => r[k] - baseOf(r)[k];                              // points gained by training
+const nat100 = b => 13.2 - .036 * b.spd, nat200 = b => 2 * nat100(b) + (60 - b.end) * .012, nat400 = b => 2 * nat200(b) + 5.2 - (b.end - 50) * .05;
+const rated = (r, d, nat) => nat(baseOf(r)) * Math.max(.5, 1 - up(r, 'spd') * SPD_PT[d]) * Math.max(.5, 1 - up(r, 'end') * END_PT[d]);
+const t100 = r => rated(r, 100, nat100);
+const t200 = r => rated(r, 200, nat200);
+const t400 = r => rated(r, 400, nat400);
 const pbOf = (r, leg) => leg === 100 ? t100(r) : leg === 200 ? t200(r) : t400(r);
 const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}` : t.toFixed(2);
 
@@ -578,16 +581,16 @@ const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
    Handoff (clean exchanges). All 1-99. ---- */
 const RATE = ['spd', 'end', 'acc', 'hnd'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', acc:'Start', hnd:'Handoff' };
-const RATE_DESC = { spd:'Every point is 0.5% off his 100, 0.375% off his 200 and 0.25% off his 400.', end:'Every point is 0.25% off his 100, 0.375% off his 200 and 0.5% off his 400, and he tires less between races.', acc:'Out of the blocks: lead-off leg only. Every point is 0.05 s, whatever the distance.', hnd:'Passing the baton: legs 1 to 3 only (the anchor never passes). Every point is 0.05 s, and fewer bobbles.' };
+const RATE_DESC = { spd:'Each upgrade takes 1% off his 100, 0.75% off his 200 and 0.5% off his 400.', end:'Each upgrade takes 0.5% off his 100, 0.75% off his 200 and 1% off his 400, and he tires less between races.', acc:'Out of the blocks: lead-off leg only. Each upgrade is 0.1 s, whatever the distance.', hnd:'Passing the baton: legs 1 to 3 only (the anchor never passes). Each upgrade is 0.1 s, and fewer bobbles.' };
 function makeRunner(level, year = ri(0, 3)){
   const p = giveLook({ id:uid(), fn:pick(FIRST), ln:pick(LAST), num:ri(1, 99), year, tr:{} });
   const base = level + [-4, -1.5, 1, 3][year];
-  p.lv = base;
   const type = pick([[3, -5], [0, 0], [0, 0], [-3, 6]]);                // a pure sprinter, an all-rounder, or a quarter-miler
   p.spd = clamp(Math.round(base + type[0] + rnd(-5, 5)), 1, 99);
   p.end = clamp(Math.round(base + type[1] + rnd(-9, 9)), 1, 99);
   p.acc = clamp(Math.round(base + rnd(-10, 10)), 1, 99);
   p.hnd = clamp(Math.round(45 + level * .35 + rnd(-18, 18)), 1, 99);
+  p.b = Object.fromEntries(RATE.map(k => [k, p[k]]));
   return p;
 }
 const squad = level => { const yrs = shuffle([0, 0, 1, 1, 2, 2, 3, 3]).slice(0, 6); return yrs.map(y => makeRunner(level, y)); };
@@ -596,27 +599,26 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
 
 /* ---- a leg of a relay ----
    time = his best for the distance
-          + the blocks on the lead-off leg (0.15 s for a par starter, 0.05 s less per point of Start), or minus the flying start on legs 2-4
+          + the blocks on the lead-off leg (up to 0.25 s, less with a good Start; 0.05 s off per trained point), or minus the flying start on legs 2-4
           x how hard he's told to run (Easy +2.5%, All out -1.2%)
           x tiredness: nothing at full energy, about +1% at 70, +3% at 50, +6% at 30
           x the day: anywhere from 1% quicker to 1% slower, evenly (user)
    and it costs him energy: 30 / 42 / 55 for a steady 100 / 200 / 400, more all out, less with good Endurance. */
 const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * .000012;
 /* Start and Handoff (user): a training upgrade (+2) is worth about 0.1 s, the same in the 100 as in the 400, so 0.05 s a
-   point. Start counts on the lead-off leg only, Handoff for the man passing the baton only. Both are measured against a
-   par for the level you coach at (about what the teams there have), so the benchmark times hold from high school to the
-   Olympics: a par starter loses 0.15 s to the blocks and a par pass costs about 0.3 s. Better than par can go negative. */
-const PT = .05, START_PAR = { hs:40, d2:67, d1:76, usa:86 }, HAND_PAR = { hs:58, d2:68, d1:72, usa:76 };
-const startLoss = r => .15 + ((START_PAR[G?.level] ?? 60) - r.acc) * PT;
+   trained point. Start counts on the lead-off leg only, Handoff for the man passing the baton only. His natural rating
+   is worth what it always was (blocks 0.25 s down to nothing, a pass 0.5 s down to 0.1). Trained far enough, either can go negative. */
+const PT = .05;
+const startLoss = r => .25 - baseOf(r).acc * .0025 - up(r, 'acc') * PT;
 const DAY = .01;                                                     // the day he's having: anywhere from 1% quicker to 1% slower (user), so a 12.20 man runs 12.08 to 12.32
 function legTime(r, ev, legIdx, effort, energy, luck = 0){
   const start = legIdx === 0 ? startLoss(r) : -ev.fly;
   return (pbOf(r, ev.leg) + start) * EFFORT[effort].time * tired(energy) * (1 + luck * DAY);
 }
 const legCost = (r, ev, effort) => ev.cost * EFFORT[effort].cost * (1.25 - r.end / 200);
-// a baton exchange: it is the man passing the baton whose Handoff counts (user: the anchor's does nothing), 0.05 s a point
-// around the same par; more if he comes in spent, and now and then a bobble. A slick pass can come out better than par (negative).
-const passLoss = a => .26 + ((HAND_PAR[G?.level] ?? 65) - a.hnd) * PT;
+// a baton exchange: it is the man passing the baton whose Handoff counts (user: the anchor's does nothing), 0.05 s a
+// trained point; more if he comes in spent, and now and then a bobble. A slick pass can come out better than par (negative).
+const passLoss = a => .12 + (100 - baseOf(a).hnd) * .004 - up(a, 'hnd') * PT;
 function exchange(a, b, energyAfter){
   const bobble = Math.random() < clamp(.02 + (60 - a.hnd) * .0012, .004, .09);
   return { loss:passLoss(a) + rnd(0, .12) + (energyAfter < 25 ? .15 : 0) + (bobble ? rnd(.7, 1.2) : 0), bobble };
@@ -803,7 +805,7 @@ function endSeason(finish, reach){
   G.prog = clamp(G.prog + (reach ? reach * 1.6 : -1), G.prog0, G.prog0 + PROG_UP[L]);
   for (const r of G.roster) {
     const before = t100(r);
-    for (const k of RATE) r[k] = Math.max(r[k], clamp(r[k] + ri(1, [5, 4, 3, 2][r.year]), 1, CAP[L]));
+    for (const k of RATE) { const was = r[k]; r[k] = Math.max(r[k], clamp(r[k] + ri(1, [5, 4, 3, 2][r.year]), 1, CAP[L])); baseOf(r)[k] += r[k] - was; }   // growing up is natural, not training
     if (r.year >= 3) G.off.gone.push(`${r.fn} ${r.ln}`); else G.off.grew.push({ name:`${r.fn[0]}. ${r.ln}`, yr:YEARS[r.year + 1], from:before, to:t100(r) });
   }
 }
