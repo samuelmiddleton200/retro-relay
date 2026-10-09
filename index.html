@@ -639,7 +639,7 @@ const legRun = (r, ev, legIdx, effort, energy, luck = 0) => (pbOf(r, ev.leg) - (
    others), so 0.3 s is 0.6 or 1.2 s on the race clock. To keep the times where they were, the average computer tap
    (R0) costs what a start (SB) and a pass (XB) always did; quicker than that gains on it, slower loses.
    Too early (before the gun, or before the cue) counts as EARLY; no tap at all goes at RMAX. */
-const SB = .15, XB = .33, R0 = .4, RMAX = .65, EARLY = .5;
+const SB = .15, XB = .33, R0 = .4, RMAX = .65, EARLY = .7;   // EARLY .7 (user): a false start or an early handoff has to hurt, or guessing every cue is free
 const aiTap = () => rnd(.3, .5);
 // what a leg should take with an average tap: for the lineup screen and the computer's coaches (the Hunt boost is not counted)
 const legProj = (r, ev, i, effort, energy) => legRun(r, ev, i, effort, energy) + (i === 0 ? SB : 0) + (i < 3 ? XB : 0);
