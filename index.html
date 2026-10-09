@@ -559,14 +559,14 @@ const CAP = { hs:74, d2:82, d1:90, usa:97 };
    missing the championship meets, up about 1.6 for each round you get through, never below where the school started and
    never more than PROG_UP above it (winning does not turn a small college into a powerhouse: you move up by taking jobs). */
 const PROG_UP = { hs:24, d2:8, d1:5 };
-/* What training is worth (user): an upgrade (+2) takes 1 / 0.75 / 0.5% off his 100 / 200 / 400 for Speed and the opposite,
-   0.5 / 0.75 / 1%, for Endurance; Start and Handoff are 0.1 s an upgrade (see the leg, below). So half of that a point.
+/* What training is worth (user): an upgrade (+2) takes 0.5 / 0.375 / 0.25% off his 100 / 200 / 400 for Speed and the
+   opposite, 0.25 / 0.375 / 0.5%, for Endurance (half of the first try, which the user found too steep a ladder); Start and Handoff are 0.1 s an upgrade (see the leg, below). So half of that a point.
    Those rates are for the points he has TRAINED. The ratings a runner has by nature (r.b: what he was made with, plus
    the year-to-year growth) turn into times by the original formulas, which is what keeps every team in the game on the
    benchmark times above. (At the trained rates the natural spread inside one team was worth twice as much, and the
    best four of a high school nationals team ran 36-37 for the 4x100: user, "that's not right".)
    Runners from older saves get r.b the first time they are timed: their ratings less the upgrades they have had. */
-const SPD_PT = { 100:.005, 200:.00375, 400:.0025 }, END_PT = { 100:.0025, 200:.00375, 400:.005 };
+const SPD_PT = { 100:.0025, 200:.001875, 400:.00125 }, END_PT = { 100:.00125, 200:.001875, 400:.0025 };
 const baseOf = r => r.b ??= Object.fromEntries(RATE.map(k => [k, r[k] - 2 * ((r.tr && r.tr[k]) || 0)]));
 const up = (r, k) => r[k] - baseOf(r)[k];                              // points gained by training
 const nat100 = b => 13.2 - .036 * b.spd, nat200 = b => 2 * nat100(b) + (60 - b.end) * .012, nat400 = b => 2 * nat200(b) + 5.2 - (b.end - 50) * .05;
@@ -581,7 +581,7 @@ const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
    Handoff (clean exchanges). All 1-99. ---- */
 const RATE = ['spd', 'end', 'acc', 'hnd'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', acc:'Start', hnd:'Handoff' };
-const RATE_DESC = { spd:'Each upgrade takes 1% off his 100, 0.75% off his 200 and 0.5% off his 400.', end:'Each upgrade takes 0.5% off his 100, 0.75% off his 200 and 1% off his 400, and he tires less between races.', acc:'Out of the blocks: lead-off leg only. Each upgrade is 0.1 s, whatever the distance.', hnd:'Passing the baton: legs 1 to 3 only (the anchor never passes). Each upgrade is 0.1 s, and fewer bobbles.' };
+const RATE_DESC = { spd:'Each upgrade takes 0.5% off his 100, 0.375% off his 200 and 0.25% off his 400.', end:'Each upgrade takes 0.25% off his 100, 0.375% off his 200 and 0.5% off his 400, and he tires less between races.', acc:'Out of the blocks: lead-off leg only. Each upgrade is 0.1 s, whatever the distance.', hnd:'Passing the baton: legs 1 to 3 only (the anchor never passes). Each upgrade is 0.1 s, and fewer bobbles.' };
 function makeRunner(level, year = ri(0, 3)){
   const p = giveLook({ id:uid(), fn:pick(FIRST), ln:pick(LAST), num:ri(1, 99), year, tr:{} });
   const base = level + [-4, -1.5, 1, 3][year];
