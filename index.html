@@ -578,12 +578,14 @@ const PROG_UP = { hs:24, d2:8, d1:5 };
 /* Times (user): a runner with 100 Speed and 100 Endurance, the most anyone can have, runs 9.40 / 18.80 / 42.50 / 1:37.00.
    Every point under 100 makes him a true PERCENTAGE slower (user: "1% of 12 secs is more than 1% of 10"), so an upgrade
    takes the same share off whatever he runs now; RATES is that share per point, as a fraction:
-       Speed      100: 0.24%   200: 0.18%   400: 0.13%   800: 0.08%
-       Endurance  100: 0.12%   200: 0.18%   400: 0.25%   800: 0.40%
-   which still lands on the benchmarks: at 34 / 34 (an average high school runner) 11.92 / 23.84 / 54.6, at 61 (state
-   level) 10.82 for the 100, at 80 (college elite) 10.10, and about 1:52 for the 800 at 70. */
+       Speed      100: 0.24%   200: 0.18%   400: 0.12%   800: 0.06%
+       Endurance  100: 0.12%   200: 0.18%   400: 0.24%   800: 0.30%
+   One steps down by 0.06 a distance and the other steps up by 0.06, and the two always add up to 0.36 (user: they
+   should be the same pattern in reverse).
+   which still lands on the benchmarks: at 34 / 34 (an average high school runner) 11.92 / 23.84 / 53.9, at 61 (state
+   level) 10.82 for the 100, at 80 (college elite) 10.10, and about 1:48 for the 800 at 70. */
 const BEST = { 100:9.4, 200:18.8, 400:42.5, 800:97 };
-const RATES = { 100:[.0024, .0012], 200:[.0018, .0018], 400:[.0013, .0025], 800:[.0008, .004] };
+const RATES = { 100:[.0024, .0012], 200:[.0018, .0018], 400:[.0012, .0024], 800:[.0006, .003] };
 const rated = (r, d) => BEST[d] * Math.exp(RATES[d][0] * (100 - r.spd) + RATES[d][1] * (100 - r.end));
 const t100 = r => rated(r, 100), t200 = r => rated(r, 200), t400 = r => rated(r, 400), t800 = r => rated(r, 800);
 const pbOf = (r, leg) => leg === 100 ? t100(r) : leg === 200 ? t200(r) : leg === 400 ? t400(r) : t800(r);
@@ -596,8 +598,8 @@ const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
 const RATE = ['spd', 'end', 'hunt', 'rec'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', hunt:'Hunt', rec:'Recovery' };
 // what one upgrade does, in 40 characters or fewer, as percentages only (user: quick numbers, no examples)
-const RATE_DESC = { get spd(){ return '100 +.24% 200 +.18% 400 +.13%' + (G.level === 'hs' ? '' : ' 800 +.08%'); },
-  get end(){ return '100 +.12% 200 +.18% 400 +.25%' + (G.level === 'hs' ? '' : ' 800 +.4%'); },
+const RATE_DESC = { get spd(){ return '100 +.24% 200 +.18% 400 +.12%' + (G.level === 'hs' ? '' : ' 800 +.06%'); },
+  get end(){ return '100 +.12% 200 +.18% 400 +.24%' + (G.level === 'hs' ? '' : ' 800 +.3%'); },
   hunt:'+0.1% speed when not leading, over 50',
   rec:'+0.5% energy back after each race' };
 const capOf = k => 100;
