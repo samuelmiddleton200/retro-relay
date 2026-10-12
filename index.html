@@ -1447,6 +1447,9 @@ function buildTrack(title, ev, surface = SURFACE.clay){
   for (let y = 0; y < (RYO - RY0) * TILT; y += 2) { g.fillStyle = (y / 2) % 2 ? '#1d1d27' : '#ffffff'; g.fillRect(XR + 1, CY + RY0 * TILT + y, 1, 2); }
   const ST = stagger(ev);
   for (let k = 1; k < LANES; k++) tick(k, uOf(k, ST * k), '#ffffff', 1.75);
+  // the lane numbers, painted in each lane just past its start line (user): so they sit further round the bend for the
+  // 4x200, 4x400 and 4x800, whose stagger is twice the 4x100's
+  for (let k = 0; k < LANES; k++) { const p = lanePos(k, uOf(k, ST * k + 6.5)); pxText(g, String(k + 1), Math.round(p.x) - 1.5, Math.round(p.y) - 2.5, 'rgba(255,255,255,.92)', 1); }
   // the exchange zones: a yellow line where the next man waits and another 20 m on (the baton changes hands about 15 m in)
   for (let i = 1; i < 4; i++) { const m = i * ev.leg, lanes = ev.leg < 400 || m < 800;
     for (let k = 0; k < LANES; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, ST * k + m + add) : uOf(0, m + add), '#ffd23f', 1.25); } }
