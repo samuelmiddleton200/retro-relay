@@ -643,14 +643,17 @@ const legCost = (r, ev) => ev.cost * (1.25 - r.end / 200);
 const fatigue = (r, ev, energy) => tiredMean(energy, legCost(r, ev)) / tiredMean(100, legCost(r, ev));
 const legRun = (r, ev, legIdx, energy, luck = 0) => (pbOf(r, ev.leg) - (legIdx ? ev.fly : 0)) * fatigue(r, ev, energy) * (1 + luck * DAY);
 /* Starts and handoffs (user): you tap them, and the quicker the tap the quicker the start or the pass. The other teams
-   get a random 0.3 to 0.5 s each time. A tap is live time and costs TAPX (2) times that on the race clock in
+   take a fixed 0.30 s to start and 0.25 s to hand off. A tap is live time and costs TAPX (2) times that on the race clock in
    every relay, however fast the race is being played: while you are on the clock (from the gun or the cue to your
-   tap) the race is shown at 2x, so what you watch is what you are charged. To keep the times where they were, the average computer tap
-   (R0) costs what a start (SB) and a pass (XB) always did; quicker than that gains on it, slower loses.
+   tap) the race is shown at 2x, so what you watch is what you are charged. To keep the times where they were, the computer's tap
+   costs what a start (SB) and a pass (XB) always did; quicker than that gains on it, slower loses.
    Too early (before the gun, or before the cue) counts as EARLY; no tap at all goes at RMAX. */
 const TAPX = 2;                                                       // a tap costs twice its time on the race clock, the 4x100 and the 4x800 alike (user): 0.3 s is 0.6 s
-const SB = .15, XB = .33, R0 = .4, RMAX = .65, EARLY = .7;   // EARLY .7 (user): a false start or an early handoff has to hurt, or guessing every cue is free
-const aiTap = () => rnd(.3, .5);
+const SB = .15, XB = .33, RMAX = .65, EARLY = .7;   // EARLY .7 (user): a false start or an early handoff has to hurt, or guessing every cue is free
+// the other teams do not vary any more (user): every start is 0.30 s (0.6 on the clock) and every handoff 0.25 s (0.5).
+// Those are also the taps that cost exactly what a start (SB) and a pass (XB) always did: beat them and you gain.
+const AI_START = .3, AI_PASS = .25;
+const aiTap = i => i ? AI_PASS : AI_START;
 // what a leg should take with an average tap: for the lineup screen and the computer's coaches (the Hunt boost is not counted)
 const legProj = (r, ev, i, energy) => legRun(r, ev, i, energy) + (i === 0 ? SB : 0) + (i < 3 ? XB : 0);
 function projected(team, ev, lineup){
@@ -673,7 +676,7 @@ function simNew(meet, ev, live = false){
   const teams = meet.teams.map((team, ti) => ({ ti, team, user:!!team.user, H:[], Z:[], next:0,
     legs:team.lineup.map((L, i) => { const r = team.roster[L.i], en = team.energy[r.id] ?? 100;
       return { r, id:r.id, name:`${r.fn[0]}. ${r.ln}`, before:en, after:clamp(en - legCost(r, ev), 0, 100),
-        run:legRun(r, ev, i, en, rnd(-1, 1)), hunt:i ? huntOf(r) : 0, tap:live && team.user ? null : aiTap(), early:false, behind:false }; }) }));
+        run:legRun(r, ev, i, en, rnd(-1, 1)), hunt:i ? huntOf(r) : 0, tap:live && team.user ? null : aiTap(i), early:false, behind:false }; }) }));
   const S = { ev, K:ev.x, teams, passed:[0, 0, 0, 0], live, onArrive:null };
   for (const tm of teams) if (tm.legs[0].tap !== null) tm.H[0] = tm.legs[0].tap * TAPX;
   return S;
@@ -685,7 +688,7 @@ function simArrive(S, tm){
   leg.D = leg.run * (1 - (leg.behind ? leg.hunt : 0));
   if (i === 3) tm.H[4] = tm.H[3] + leg.D;
   else {
-    tm.Z[i] = tm.H[i] + leg.D + XB - R0 * K + (i === 0 ? SB - R0 * K : 0);    // when the next man would get it with a tap of zero
+    tm.Z[i] = tm.H[i] + leg.D + XB - AI_PASS * K + (i === 0 ? SB - AI_START * K : 0);    // when the next man would get it with a tap of zero
     const nx = tm.legs[i + 1]; if (nx.tap !== null) tm.H[i + 1] = tm.Z[i] + nx.tap * K;
   }
   tm.next++;
@@ -1151,7 +1154,7 @@ function lineupHTML(){
 function resultHTML(){
   const M = G.meet, ev = EVS()[M.ev], res = M.last, mine = res.find(o => M.teams[o.ti].user);
   const rows = res.map(o => { const t = M.teams[o.ti]; return `<tr class="${t.user ? 'me' : ''}"><td class="num">${o.place}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${fmt(o.total)}</td><td class="num">+${o.pts}</td><td class="num">${t.pts}</td></tr>`; }).join('');
-  const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.tap != null ? ` <span class="${l.early ? 'bad' : l.tap < .3 ? 'good' : 'muted'}">${l.early ? 'early' : l.tap.toFixed(2)}</span>` : ''}${l.behind ? ' <span class="muted">hunt</span>' : ''}${l.pb ? ' <span class="yellow">PB</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
+  const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.tap != null ? ` <span class="${l.early ? 'bad' : l.tap < aiTap(i) ? 'good' : 'muted'}">${l.early ? 'early' : l.tap.toFixed(2)}</span>` : ''}${l.behind ? ' <span class="muted">hunt</span>' : ''}${l.pb ? ' <span class="yellow">PB</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
   const next = M.ev + 1 < EVS().length ? `Next: ${EVS()[M.ev + 1].name}` : 'Meet results';
   return `<div class="bar"><div class="box">Race ${M.ev + 1}/${EVS().length}</div><div class="title">${ev.name} results</div><span></span></div>
     <div class="two wide"><div class="panel"><table><tr><th>#</th><th style="text-align:left">Team</th><th>Time</th><th>Pts</th><th>Meet</th></tr>${rows}</table></div>
@@ -1463,7 +1466,7 @@ function banner(text, small = ''){ const b = $('#banner'); if (!text) { b.hidden
    The next man waits on his mark and sets off by himself, timed so that he has built up to HALF speed just as the man
    with the baton, braking from full speed, comes down to half speed an arm's length (REACH) behind him, ZONE (6) metres
    past the mark. That moment is the cue. From it the two run on together at half speed for exactly as long as the tap
-   takes (yours, or the computer's 0.3-0.5 s): the baton passes at the tap, the new man runs on up to full speed and
+   takes (yours, or the computer's fixed 0.25 s): the baton passes at the tap, the new man runs on up to full speed and
    the old one eases down and stops about 25 m later. A tap of 0.00 would be a seamless pass; nobody ever goes slower
    than half speed because of a tap, the time lost is only the time spent at half speed.
    What is drawn always adds up to the times the race is run in (H): each man's speed is shaped to fit his leg. */
