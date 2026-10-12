@@ -505,10 +505,10 @@ function giveLook(p){
 // fly: seconds a running start saves on legs 2-4; cost: energy a steady leg takes (four runners now run all three relays,
 // so the costs are lower than when two of six could sit one out); x: how fast the race plays (user: fixed, no speed button)
 const EVENTS = [
-  { key:'x100', name:'4x100', leg:100, fly:.6, cost:26, x:2 },
-  { key:'x200', name:'4x200', leg:200, fly:.5, cost:38, x:3 },
-  { key:'x400', name:'4x400', leg:400, fly:.4, cost:56, x:4 },
-  { key:'x800', name:'4x800', leg:800, fly:.3, cost:75, x:6 },
+  { key:'x100', name:'4x100', leg:100, fly:.6, cost:30, x:2 },
+  { key:'x200', name:'4x200', leg:200, fly:.5, cost:44, x:3 },
+  { key:'x400', name:'4x400', leg:400, fly:.4, cost:62, x:4 },
+  { key:'x800', name:'4x800', leg:800, fly:.3, cost:82, x:6 },
 ];
 // high school meets are the first three; college and the Olympics add the 4x800 as a fourth relay (user)
 const EVS = () => G.level === 'hs' ? EVENTS.slice(0, 3) : EVENTS;
@@ -626,9 +626,9 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
             energy, 2% off at 70, 5% at 50, 10% at 30, 20% at empty. A fresh man runs exactly his rated time.
           x the day: anywhere from 1% quicker to 1% slower, evenly (user)
           and, if the team is not in the lead when he gets the baton, less his Hunt boost.
-   It costs him energy: 26 / 38 / 56 / 75 for the 100 / 200 / 400 / 800, less with good Endurance, and he gets half
-   his Recovery back between races. An average high schooler (34s) starts his 400 on about 65 and finishes it empty,
-   about 6% slow; ten more points of Recovery start him on 75 and make that about 4%. */
+   It costs him energy: 30 / 44 / 62 / 82 for the 100 / 200 / 400 / 800, less with good Endurance, and he gets half
+   his Recovery back between races. (Raised from 26 / 38 / 56 / 75 at the user's request so that Recovery matters in
+   every relay: an average high schooler now starts his 200 on about 85 and his 400 on about 54.) */
 const TIRE = .00002;
 const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * TIRE;
 // the average of that curve over a leg that starts at energy e0 and burns `cost` (anything past empty is run at empty)
