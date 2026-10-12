@@ -643,10 +643,12 @@ const legCost = (r, ev) => ev.cost * (1.25 - r.end / 200);
 const fatigue = (r, ev, energy) => tiredMean(energy, legCost(r, ev)) / tiredMean(100, legCost(r, ev));
 const legRun = (r, ev, legIdx, energy, luck = 0) => (pbOf(r, ev.leg) - (legIdx ? ev.fly : 0)) * fatigue(r, ev, energy) * (1 + luck * DAY);
 /* Starts and handoffs (user): you tap them, and the quicker the tap the quicker the start or the pass. The other teams
-   get a random 0.3 to 0.5 s each time. A tap is live time and the race plays at ev.x (2x for the 4x100, 3x the 4x200,
-   4x the 4x400, 6x the 4x800), so 0.3 s is 0.6 to 1.8 s on the race clock. To keep the times where they were, the average computer tap
+   get a random 0.3 to 0.5 s each time. A tap is live time and costs TAPX (2) times that on the race clock in
+   every relay, however fast the race is being played: while you are on the clock (from the gun or the cue to your
+   tap) the race is shown at 2x, so what you watch is what you are charged. To keep the times where they were, the average computer tap
    (R0) costs what a start (SB) and a pass (XB) always did; quicker than that gains on it, slower loses.
    Too early (before the gun, or before the cue) counts as EARLY; no tap at all goes at RMAX. */
+const TAPX = 2;                                                       // a tap costs twice its time on the race clock, the 4x100 and the 4x800 alike (user): 0.3 s is 0.6 s
 const SB = .15, XB = .33, R0 = .4, RMAX = .65, EARLY = .7;   // EARLY .7 (user): a false start or an early handoff has to hurt, or guessing every cue is free
 const aiTap = () => rnd(.3, .5);
 // what a leg should take with an average tap: for the lineup screen and the computer's coaches (the Hunt boost is not counted)
@@ -673,12 +675,12 @@ function simNew(meet, ev, live = false){
       return { r, id:r.id, name:`${r.fn[0]}. ${r.ln}`, before:en, after:clamp(en - legCost(r, ev), 0, 100),
         run:legRun(r, ev, i, en, rnd(-1, 1)), hunt:i ? huntOf(r) : 0, tap:live && team.user ? null : aiTap(), early:false, behind:false }; }) }));
   const S = { ev, K:ev.x, teams, passed:[0, 0, 0, 0], live, onArrive:null };
-  for (const tm of teams) if (tm.legs[0].tap !== null) tm.H[0] = tm.legs[0].tap * S.K;
+  for (const tm of teams) if (tm.legs[0].tap !== null) tm.H[0] = tm.legs[0].tap * TAPX;
   return S;
 }
 // man i of this team sets off: is he chasing, how long will he take, and (if the next tap is known) when the next man gets it
 function simArrive(S, tm){
-  const i = tm.next, leg = tm.legs[i], K = S.K;
+  const i = tm.next, leg = tm.legs[i], K = TAPX;
   if (i) { leg.behind = S.passed[i] > 0; S.passed[i]++; }
   leg.D = leg.run * (1 - (leg.behind ? leg.hunt : 0));
   if (i === 3) tm.H[4] = tm.H[3] + leg.D;
@@ -734,9 +736,11 @@ const STAGES = { hs:['District', 'State', 'Nationals'], d2:['Conference', 'D2 Na
 const MEETS = 5;
 const standings = () => [...G.teams].sort((a, b) => b.pts - a.pts || (a.best.x100 || 99) - (b.best.x100 || 99));
 // who is in the next meet
+// high school State: only the winner goes on to Nationals (user); everywhere else the top three do
+const needWin = () => G.level === 'hs' && STAGES.hs[G.stage] === 'State';
 function nextMeetInfo(){
   if (G.phase === 'meets') return { kind:'meet', title:`Meet ${G.meetNo + 1} of ${MEETS}`, sub:'Top 3 in the standings after five meets go on' };
-  if (G.phase === 'stage') { const names = STAGES[G.level], last = G.stage === names.length - 1; return { kind:'stage', title:names[G.stage], sub:last ? (G.level === 'd1' ? 'Win it and the USA team is yours' : G.level === 'usa' ? 'One shot' : 'The last meet of the season') : 'Top 3 go on' }; }
+  if (G.phase === 'stage') { const names = STAGES[G.level], last = G.stage === names.length - 1; return { kind:'stage', title:names[G.stage], sub:last ? (G.level === 'd1' ? 'Win it and the USA team is yours' : G.level === 'usa' ? 'One shot' : 'The last meet of the season') : needWin() ? 'Win it to go to Nationals' : 'Top 3 go on' }; }
   return null;
 }
 function startMeet(){
@@ -828,8 +832,8 @@ function finishMeet(){
       const champ = place === 1;
       if (G.level === 'usa') { if (champ) G.gold++; sum.next = champ ? 'Olympic champions. That is the top of the sport.' : `${ordinal(place)} at the Olympics. One shot, and it's gone: back to a college job.`; endSeason(champ ? 'Olympic champions' : `${ordinal(place)} at the Olympics`, champ ? 9 : 5); }
       else { if (champ) G.titles++; sum.next = champ ? `${names[G.stage]} champions!` : `${ordinal(place)} at ${names[G.stage]}.`; endSeason(champ ? `${names[G.stage]} champions` : `${ordinal(place)} at ${names[G.stage]}`, champ ? 4 + G.stage : place <= 3 ? 3 + G.stage : 2 + G.stage); }
-    } else if (place <= 3) { G.stage++; const q = qualTP(G.stage); G.tp += q; sum.next = `${ordinal(place)} at ${names[G.stage - 1]}: on to ${names[G.stage]}. +${q} TP for qualifying.`; }
-    else { sum.next = `${ordinal(place)} at ${names[G.stage]}. Only the top three go on.`; endSeason(`${ordinal(place)} at ${names[G.stage]}`, 1 + G.stage); }
+    } else if (place <= (needWin() ? 1 : 3)) { G.stage++; const q = qualTP(G.stage); G.tp += q; sum.next = `${ordinal(place)} at ${names[G.stage - 1]}: on to ${names[G.stage]}. +${q} TP for qualifying.`; }
+    else { sum.next = `${ordinal(place)} at ${names[G.stage]}. ${needWin() ? 'Only the State champions go to Nationals.' : 'Only the top three go on.'}`; endSeason(`${ordinal(place)} at ${names[G.stage]}`, 1 + G.stage); }
   }
   G.last = sum; G.meet = null; G.lineup = null;
 }
@@ -878,10 +882,30 @@ function takeJob(sc){
   G.roster = squad(G.prog);
   G.offers = []; G.newJob = true;
 }
-// recruits: freshmen around your program's level, better after a deep run. You pick one for every open spot.
+/* Recruits (user): the class is built round YOUR runners' times, so there is always what you need in it:
+     - an average 200 m runner: your team's average 200, leaning a little to speed or to endurance
+     - an average 100 m runner: your team's average 100, with less endurance (a sprinter)
+     - an average 400 m runner who is not great at the rest: your average 400, but a 100 that would be 3rd or last on your team
+     - an all-rounder: someone who would place 3rd on your team at every distance (between your 2nd and 3rd man)
+   and the rest of the class are ordinary freshmen around your program's level, better after a deep run.
+   You pick one for every open spot. */
+// the Speed and Endurance that give these 100 and 400 times (the two rate rows solved backwards)
+function ratingsFor(T100, T400){
+  const [a, b] = RATES[100], [c, d] = RATES[400], L1 = Math.log(T100 / BEST[100]), L4 = Math.log(T400 / BEST[400]), det = a * d - b * c;
+  return { spd:100 - (L1 * d - L4 * b) / det, end:100 - (L4 * a - L1 * c) / det };
+}
 function recruitClass(){
-  const open = G.roster.filter(r => r.year >= 3).length;
-  G.off.picks = open; G.off.class = Array.from({ length:open + 3 }, () => makeRunner(G.prog + rnd(-3, 4) + 4, 0));   // +4: makeRunner takes 4 off a freshman
+  const open = G.roster.filter(r => r.year >= 3).length, plain = () => makeRunner(G.prog + rnd(-3, 4) + 4, 0);   // +4: makeRunner takes 4 off a freshman
+  const of = d => G.roster.map(r => pbOf(r, d)).sort((x, y) => x - y), mean = d => avg(of(d)), mid = d => (of(d)[1] + of(d)[2]) / 2, slow = d => (of(d)[2] + of(d)[3]) / 2;
+  const shape = (spd, end) => { const p = plain(); p.spd = clamp(Math.floor(spd), 1, 99); p.end = clamp(Math.floor(end), 1, 99); return p; };   // rounded down: a touch slower than the target, never quicker
+  const base = ratingsFor(mean(100), mean(400)), tilt = rnd(-6, 6), sum200 = Math.log(mean(200) / BEST[200]) / RATES[200][0];   // points under 100, Speed and Endurance together, for your average 200
+  const sprintEnd = base.end - rnd(5, 10), m4 = ratingsFor(slow(100), mean(400)), all = ratingsFor(mid(100), mid(400));
+  const made = G.roster.length < 4 ? [] : [
+    shape(100 - sum200 / 2 + tilt, 100 - sum200 / 2 - tilt),
+    shape(100 - (Math.log(mean(100) / BEST[100]) - RATES[100][1] * (100 - sprintEnd)) / RATES[100][0], sprintEnd),
+    shape(m4.spd, m4.end),
+    shape(all.spd, all.end)];
+  G.off.picks = open; G.off.class = shuffle([...made, ...Array.from({ length:Math.max(0, open + 3 - made.length) }, plain)]);
 }
 function nextSeason(){
   G.season++;
@@ -1529,12 +1553,12 @@ const batonAt = (tm, T) => { if (T >= tm.H[4]) return 1e5 - tm.H[4]; if (!(T >= 
 const say = (text, small = '') => { R.flash = { text, small, until:R.real + 1.1 }; };
 function userStart(tap, early){
   const tm = R.mine, leg = tm.legs[0]; if (leg.tap !== null) return;
-  leg.tap = tap; leg.early = early; tm.H[0] = tap * R.S.K;
+  leg.tap = tap; leg.early = early; tm.H[0] = tap * TAPX;
   say(early ? 'False start' : tap.toFixed(2), early ? `counts as ${EARLY.toFixed(2)}` : tap >= RMAX ? 'too slow' : 'start');
 }
 function userGo(i, tap, early){
   const tm = R.mine, nx = tm.legs[i]; if (nx.tap !== null) return;
-  nx.tap = tap; nx.early = early; tm.H[i] = tm.Z[i - 1] + tap * R.S.K;
+  nx.tap = tap; nx.early = early; tm.H[i] = tm.Z[i - 1] + tap * TAPX;
   say(early ? 'Too early' : tap.toFixed(2), early ? `counts as ${EARLY.toFixed(2)}` : tap >= RMAX ? 'too slow' : 'handoff');
 }
 function tap(){
@@ -1545,19 +1569,25 @@ function tap(){
     return real < R.gun ? userStart(EARLY, true) : userStart(clamp(real - R.gun, 0, RMAX), false);
   }
   const i = tm.next; if (i < 1 || i > 3 || tm.legs[i].tap !== null) return;
-  const T = (real - R.gun) * K, cue = tm.Z[i - 1];
+  const cue = tm.Z[i - 1], T = R.T + (real - R.real) * (R.T >= cue ? TAPX : K);
   if (T < cue - ARM * K) return;                                       // the prompt is still asleep
-  if (T < cue) userGo(i, EARLY, true); else userGo(i, clamp((T - cue) / K, 0, RMAX), false);
+  if (T < cue) userGo(i, EARLY, true); else userGo(i, clamp((T - cue) / TAPX, 0, RMAX), false);
 }
 let orderT = 0, tapLabel = '';
 function update(dt){
   const S = R.S, K = S.K, me = R.mine;
   R.real += dt;
   if (R.real >= R.gun) {
-    R.T = (R.real - R.gun) * K;
-    if (me.legs[0].tap === null && R.T >= RMAX * K) userStart(RMAX, false);
+    // the race clock: at the race's speed, except while you are on the clock for a tap (after the gun, or after a
+    // handoff cue), when it runs at TAPX so that the wait you see is the time you are charged
+    let left = Math.min(dt, R.real - R.gun);
+    const j = me.next, cue = j >= 1 && j <= 3 && me.legs[j].tap === null ? me.Z[j - 1] : undefined;
+    if (me.legs[0].tap === null) R.T += left * TAPX;
+    else if (cue !== undefined) { if (R.T < cue) { const run = Math.min(left, (cue - R.T) / K); R.T += run * K; left -= run; } R.T += left * TAPX; }
+    else R.T += left * K;
+    if (me.legs[0].tap === null && R.T >= RMAX * TAPX) userStart(RMAX, false);
     const i = me.next;
-    if (i >= 1 && i <= 3 && me.legs[i].tap === null && R.T >= me.Z[i - 1] + RMAX * K) userGo(i, RMAX, false);
+    if (i >= 1 && i <= 3 && me.legs[i].tap === null && R.T >= me.Z[i - 1] + RMAX * TAPX) userGo(i, RMAX, false);
     simRun(S, R.T);
     if (!R.final && R.T >= me.H[4]) R.final = [ordinal(1 + S.teams.filter(t => t.H[4] < me.H[4]).length), fmt(me.H[4])];
     if (R.end === Infinity && S.teams.every(t => t.H[4] !== undefined)) R.end = Math.max(...S.teams.map(t => t.H[4]));
