@@ -902,10 +902,11 @@ function nextSeason(){
 }
 function buildLeagueUSA(){ G.teams = [{ ...G.school, id:'USA', user:true, roster:G.roster, base:0, pts:0, meets:0, best:{} }]; }
 // training: 1 point onto a rating (user). A runner you have never trained costs 2 / 2 / 1 / 2 (Speed, Endurance, Hunt,
-// Recovery) whatever his ratings are, a college freshman the same as a high school one (user); each one after on the
-// same rating costs 1 more. Hunt is the cheap one (user): 1, and 1 more only every third time, so it is worth a few
+// Recovery) whatever his ratings are, a college freshman the same as a high school one (user); the price on a
+// rating goes up by 1 every second upgrade (2, 2, 3, 3, 4, 4...: every upgrade was too dear, ten cost 65; now 40).
+// Hunt is the cheap one (user): 1, and 1 more only every third time, so it is worth a few
 // once Speed and Endurance have got dear.
-const trainCost = (r, k) => k === 'hunt' ? 1 + Math.floor((r.tr[k] || 0) / 3) : 2 + (r.tr[k] || 0);
+const trainCost = (r, k) => k === 'hunt' ? 1 + Math.floor((r.tr[k] || 0) / 3) : 2 + Math.floor((r.tr[k] || 0) / 2);
 
 /* Saves from before the four-runner, tap-the-handoff game (v1): each runner's Start becomes Hunt and his Handoff becomes
    Recovery, teams are cut to their four best, and a meet that was under way starts again.
