@@ -417,7 +417,7 @@ td.tl{text-align:left}
 .rrow .yr{font-size:10px;color:#ffe0d2}
 .rrow .pb{text-align:right;font-size:14px;line-height:1.05}.rrow .pb small{display:block;font-size:10px;color:#ffb36b}
 .legs{display:grid;gap:6px}
-.leg{display:grid;grid-template-columns:50px minmax(0,1fr) auto 50px;align-items:center;gap:6px;border:2px solid rgba(255,255,255,.25);border-radius:6px;background:var(--blue-dd);padding:3px 6px;min-height:38px}
+.leg{display:grid;grid-template-columns:50px minmax(0,1fr) 62px;align-items:center;gap:6px;border:2px solid rgba(255,255,255,.25);border-radius:6px;background:var(--blue-dd);padding:3px 6px;min-height:38px}
 .leg.empty{grid-template-columns:50px 1fr}
 .leg > b{text-align:right;font-size:14px}
 .lname{all:unset;cursor:pointer;font-family:var(--px);font-size:12px;display:grid;white-space:nowrap;overflow:hidden}
@@ -504,18 +504,18 @@ function giveLook(p){
 // fly: seconds a running start saves on legs 2-4; cost: energy a steady leg takes (four runners now run all three relays,
 // so the costs are lower than when two of six could sit one out); x: how fast the race plays (user: fixed, no speed button)
 const EVENTS = [
-  { key:'x100', name:'4x100', leg:100, fly:.6, cost:20, x:2 },
-  { key:'x200', name:'4x200', leg:200, fly:.5, cost:30, x:3 },
-  { key:'x400', name:'4x400', leg:400, fly:.4, cost:45, x:4 },
-  { key:'x800', name:'4x800', leg:800, fly:.3, cost:60, x:6 },
+  { key:'x100', name:'4x100', leg:100, fly:.6, cost:26, x:2 },
+  { key:'x200', name:'4x200', leg:200, fly:.5, cost:38, x:3 },
+  { key:'x400', name:'4x400', leg:400, fly:.4, cost:56, x:4 },
+  { key:'x800', name:'4x800', leg:800, fly:.3, cost:75, x:6 },
 ];
 // high school meets are the first three; college and the Olympics add the 4x800 as a fourth relay (user)
 const EVS = () => G.level === 'hs' ? EVENTS.slice(0, 3) : EVENTS;
 const DISTS = () => EVS().map(e => e.leg);
 const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet points for places 1-6 in each relay
 const YEARS = ['FR', 'SO', 'JR', 'SR'];
-// (user: going all out in every race must not be free) All out is 2% quicker for 1.6 times the energy, Easy 3% slower for 0.6
-const EFFORT = [{ key:'easy', name:'Easy', time:1.03, cost:.6 }, { key:'steady', name:'Steady', time:1, cost:1 }, { key:'all', name:'All out', time:.98, cost:1.6 }];
+// There is no Easy / Steady / All out any more (user): every runner on every team runs all out every time, so what a
+// leg costs is fixed (the costs above are an all-out leg) and stamina comes down to Endurance and Recovery.
 // training points (user): every place pays something, so a last place still buys a little training. Per relay 4-3-3-2-1-1,
 // for the meet 8-6-5-4-3-2, both doubled at championship meets; and qualifying for a championship meet pays QUAL_TP,
 // 25 if it is the last one at your level (Nationals, NCAA), else 15.
@@ -622,14 +622,13 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
 
 /* ---- a leg of a relay ----
    his running time = his best for the distance (less the flying start on legs 2-4)
-          x how hard he is told to run (Easy +3%, All out -2%)
           x tiredness (user): his speed fades as his energy drains DURING the leg, by the curve below: nothing at full
-            energy, 2% off at 70, 5% at 50, 10% at 30, 20% at empty. A fresh man running steady is exactly his rated time.
+            energy, 2% off at 70, 5% at 50, 10% at 30, 20% at empty. A fresh man runs exactly his rated time.
           x the day: anywhere from 1% quicker to 1% slower, evenly (user)
           and, if the team is not in the lead when he gets the baton, less his Hunt boost.
-   It costs him energy: 20 / 30 / 45 for a steady 100 / 200 / 400 (x1.6 all out, x0.6 easy), less with good Endurance,
-   and he gets half his Recovery back between races. An average high schooler (34s) who goes all out three times is
-   empty 60% of the way round his 400 and runs it about 11% slow; all steady he is about 3% slow by the 400. */
+   It costs him energy: 26 / 38 / 56 / 75 for the 100 / 200 / 400 / 800, less with good Endurance, and he gets half
+   his Recovery back between races. An average high schooler (34s) starts his 400 on about 65 and finishes it empty,
+   about 6% slow; ten more points of Recovery start him on 75 and make that about 4%. */
 const TIRE = .00002;
 const tired = en => 1 + Math.pow(Math.max(0, 100 - en), 2) * TIRE;
 // the average of that curve over a leg that starts at energy e0 and burns `cost` (anything past empty is run at empty)
@@ -640,9 +639,9 @@ function tiredMean(e0, cost){
   return (part * burn + tired(0) * (cost - burn)) / cost;
 }
 const DAY = .01;                                                     // the day he is having: anywhere from 1% quicker to 1% slower (user), so a 12.20 man runs 12.08 to 12.32
-const legCost = (r, ev, effort) => ev.cost * EFFORT[effort].cost * (1.25 - r.end / 200);
-const fatigue = (r, ev, effort, energy) => tiredMean(energy, legCost(r, ev, effort)) / tiredMean(100, legCost(r, ev, 1));
-const legRun = (r, ev, legIdx, effort, energy, luck = 0) => (pbOf(r, ev.leg) - (legIdx ? ev.fly : 0)) * EFFORT[effort].time * fatigue(r, ev, effort, energy) * (1 + luck * DAY);
+const legCost = (r, ev) => ev.cost * (1.25 - r.end / 200);
+const fatigue = (r, ev, energy) => tiredMean(energy, legCost(r, ev)) / tiredMean(100, legCost(r, ev));
+const legRun = (r, ev, legIdx, energy, luck = 0) => (pbOf(r, ev.leg) - (legIdx ? ev.fly : 0)) * fatigue(r, ev, energy) * (1 + luck * DAY);
 /* Starts and handoffs (user): you tap them, and the quicker the tap the quicker the start or the pass. The other teams
    get a random 0.3 to 0.5 s each time. A tap is live time and the race plays at ev.x (2x for the 4x100, 3x the 4x200,
    4x the 4x400, 6x the 4x800), so 0.3 s is 0.6 to 1.8 s on the race clock. To keep the times where they were, the average computer tap
@@ -651,17 +650,17 @@ const legRun = (r, ev, legIdx, effort, energy, luck = 0) => (pbOf(r, ev.leg) - (
 const SB = .15, XB = .33, R0 = .4, RMAX = .65, EARLY = .7;   // EARLY .7 (user): a false start or an early handoff has to hurt, or guessing every cue is free
 const aiTap = () => rnd(.3, .5);
 // what a leg should take with an average tap: for the lineup screen and the computer's coaches (the Hunt boost is not counted)
-const legProj = (r, ev, i, effort, energy) => legRun(r, ev, i, effort, energy) + (i === 0 ? SB : 0) + (i < 3 ? XB : 0);
+const legProj = (r, ev, i, energy) => legRun(r, ev, i, energy) + (i === 0 ? SB : 0) + (i < 3 ? XB : 0);
 function projected(team, ev, lineup){
   let t = 0;
-  lineup.forEach((L, i) => { const r = team.roster[L.i]; t += legProj(r, ev, i, L.effort, team.energy[r.id] ?? 100); });
+  lineup.forEach((L, i) => { const r = team.roster[L.i]; t += legProj(r, ev, i, team.energy[r.id] ?? 100); });
   return t;
 }
 // the computer's order (and your Auto button): the man with the least Hunt leads off (it never counts there), then slowest to fastest
-function autoLineup(team, ev, effort = 1){
-  const idx = team.roster.map((r, i) => ({ i, t:legRun(r, ev, 1, effort, team.energy[r.id] ?? 100), hunt:r.hunt })).sort((a, b) => a.t - b.t).slice(0, 4);
+function autoLineup(team, ev){
+  const idx = team.roster.map((r, i) => ({ i, t:legRun(r, ev, 1, team.energy[r.id] ?? 100), hunt:r.hunt })).sort((a, b) => a.t - b.t).slice(0, 4);
   const lead = idx.slice().sort((a, b) => a.hunt - b.hunt)[0], rest = idx.filter(x => x !== lead).sort((a, b) => b.t - a.t);
-  return [lead, ...rest].map(x => ({ i:x.i, effort }));
+  return [lead, ...rest].map(x => ({ i:x.i }));
 }
 /* ---- the race itself, leg by leg ----
    H[i] is when man i gets the baton (H[0]: when he leaves the blocks, H[4]: the finish), on the race clock from the gun.
@@ -671,8 +670,8 @@ function autoLineup(team, ev, effort = 1){
 function simNew(meet, ev, live = false){
   const teams = meet.teams.map((team, ti) => ({ ti, team, user:!!team.user, H:[], Z:[], next:0,
     legs:team.lineup.map((L, i) => { const r = team.roster[L.i], en = team.energy[r.id] ?? 100;
-      return { r, id:r.id, name:`${r.fn[0]}. ${r.ln}`, effort:L.effort, before:en, after:clamp(en - legCost(r, ev, L.effort), 0, 100),
-        run:legRun(r, ev, i, L.effort, en, rnd(-1, 1)), hunt:i ? huntOf(r) : 0, tap:live && team.user ? null : aiTap(), early:false, behind:false }; }) }));
+      return { r, id:r.id, name:`${r.fn[0]}. ${r.ln}`, before:en, after:clamp(en - legCost(r, ev), 0, 100),
+        run:legRun(r, ev, i, en, rnd(-1, 1)), hunt:i ? huntOf(r) : 0, tap:live && team.user ? null : aiTap(), early:false, behind:false }; }) }));
   const S = { ev, K:ev.x, teams, passed:[0, 0, 0, 0], live, onArrive:null };
   for (const tm of teams) if (tm.legs[0].tap !== null) tm.H[0] = tm.legs[0].tap * S.K;
   return S;
@@ -700,7 +699,7 @@ function simRun(S, T){
 }
 // the finished race: each team's splits (from getting the baton to passing it; the first from the gun) and total, fastest first
 function simResult(S){
-  const out = S.teams.map(tm => ({ ti:tm.ti, total:tm.H[4], legs:tm.legs.map((l, i) => ({ id:l.id, name:l.name, t:tm.H[i + 1] - (i ? tm.H[i] : 0), effort:l.effort, before:l.before, after:l.after, tap:l.tap, early:l.early, behind:l.behind && l.hunt > 0 })) }));
+  const out = S.teams.map(tm => ({ ti:tm.ti, total:tm.H[4], legs:tm.legs.map((l, i) => ({ id:l.id, name:l.name, t:tm.H[i + 1] - (i ? tm.H[i] : 0), before:l.before, after:l.after, tap:l.tap, early:l.early, behind:l.behind && l.hunt > 0 })) }));
   out.sort((a, b) => a.total - b.total).forEach((o, k) => { o.place = k + 1; o.pts = POINTS[k]; });
   return out;
 }
@@ -772,12 +771,7 @@ function raceEvent(){
   return bookRace(runEvent(M, ev));
 }
 // the computer's coaches pick their order
-// and how hard: steady, except that in the last relay of the meet a man goes all out if he has enough left for it to be quicker
-function prepRace(){
-  const M = G.meet, ev = EVS()[M.ev], last = M.ev === EVS().length - 1;
-  M.teams.forEach(t => { if (t.user) return; t.lineup = autoLineup(t, ev, 1);
-    if (last) t.lineup.forEach((x, i) => { const r = t.roster[x.i], en = t.energy[r.id] ?? 100; if (legRun(r, ev, i, 2, en) < legRun(r, ev, i, 1, en)) x.effort = 2; }); });
-}
+function prepRace(){ const M = G.meet, ev = EVS()[M.ev]; M.teams.forEach(t => { if (!t.user) t.lineup = autoLineup(t, ev); }); }
 // a relay has been run (watched, or outright): energy, points, training points, bests
 function bookRace(res){
   const M = G.meet, ev = EVS()[M.ev];
@@ -943,7 +937,7 @@ function relink(){
   const t = G.teams.find(t => t.user); if (t) t.roster = G.roster;
   if (G.meet) G.meet.teams.forEach(mt => { if (mt.user) mt.roster = G.roster; else { const lt = G.teams.find(x => x.id === mt.id); if (lt) mt.roster = lt.roster; } });
 }
-function openSlot(n){ SLOT = n; G = slotInfo(n); if (G) { migrate(G); relink(); save(); } screen = 'hub'; pickedTeam = null; render(); }
+function openSlot(n){ SLOT = n; away = false; G = slotInfo(n); if (G) { migrate(G); relink(); save(); } screen = 'hub'; pickedTeam = null; render(); }
 
 /* ============================ portraits ============================ */
 function shade(hex, k){
@@ -975,7 +969,7 @@ function portrait(p, c1){
 }
 
 /* ============================ UI ============================ */
-let screen = 'hub', sel = null, pickedTeam = null;
+let screen = 'hub', sel = null, pickedTeam = null, away = false;   // away: you stepped back from the meet's lineup screen to the menus
 const LEVEL_NAME = { hs:'High school', d2:'Division 2', d1:'Division 1', usa:'Team USA', nation:'Olympics' };
 const badge = (t, cls = '') => `<div class="badge ${cls}" style="background:${t.c1};border-color:${t.c2};color:${t.c2}">${esc(t.abbr.slice(0, 4))}</div>`;
 const chipDot = t => `<i class="dot" style="background:${t.c1};border-color:${t.c2}"></i>`;
@@ -992,7 +986,7 @@ function render(){
   let s = screen, f;
   if (SLOT === null) { s = 'slots'; f = slotsHTML; }
   else if (!G) { s = 'create'; f = createHTML; }
-  else if (G.meet) { s = G.meet.watching ? 'result' : 'lineup'; f = s === 'result' ? resultHTML : lineupHTML; }
+  else if (G.meet && (G.meet.watching || !away)) { s = G.meet.watching ? 'result' : 'lineup'; f = s === 'result' ? resultHTML : lineupHTML; }
   else if (G.last && !G.last.seen) { s = 'post'; f = postHTML; }
   else if (G.phase === 'off') { s = 'off'; f = offHTML; }
   else { f = { squad:squadHTML, runner:runnerHTML, table:tableHTML, records:recordsHTML }[s]; if (!f) { s = 'hub'; f = hubHTML; } }
@@ -1028,7 +1022,7 @@ function hubHTML(){
       <div class="px" style="font-size:20px;margin:4px 0 2px">${info.title}</div>
       <div class="muted" style="font-size:13px">${info.sub}</div>
       <div style="font-size:13px;margin:6px 0 10px">${where}</div>
-      <button class="btn go" style="width:100%" data-a="meet">Go to the meet</button></div>
+      <button class="btn go" style="width:100%" data-a="meet">${G.meet ? `Back to the meet: ${EVS()[G.meet.ev].name} next` : 'Go to the meet'}</button></div>
     <div class="menu">
       <button class="btn" data-a="go" data-s="squad">Squad</button>
       <button class="btn" data-a="go" data-s="table">Standings</button>
@@ -1075,12 +1069,12 @@ function recordsHTML(){
     <div class="panel"><div class="label">Past seasons</div>${hist ? `<table><tr><th>#</th><th>School</th><th style="text-align:left">Finish</th><th>4x100</th></tr>${hist}</table>` : '<div class="muted" style="font-size:13px">Your first season is under way.</div>'}</div></div>`;
 }
 
-/* ---- the meet: the order your four run in and how hard each one runs ---- */
+/* ---- the meet: the order your four run in ---- */
 function lineupHTML(){
   const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= autoLineup(T, ev);
   // fastest first for this distance, as they are right now with tiredness counted (user)
-  const now = r => legRun(r, ev, 1, 1, T.energy[r.id]);
-  const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => now(a.r) - now(b.r)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, 1, en) - legRun(r, ev, 1, 1, 100);
+  const now = r => legRun(r, ev, 1, T.energy[r.id]);
+  const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => now(a.r) - now(b.r)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, en) - legRun(r, ev, 1, 100);
     return `<button class="rrow ${leg >= 0 ? 'on' : ''}" data-a="pickR" data-i="${i}"><img src="${portrait(r, G.school.c1)}" alt="">
       <span class="nm">${esc(short(r))} <span class="yr">${YEARS[r.year]}</span></span>
       <span class="num pb">${fmt(pbOf(r, ev.leg))}${slow >= .05 ? `<small>+${slow.toFixed(2)}</small>` : ''}</span>
@@ -1088,10 +1082,10 @@ function lineupHTML(){
   const full = L.every(Boolean);
   const legs = L.map((x, i) => { const what = ['Start', 'Leg 2', 'Leg 3', 'Anchor'][i];
     if (!x) return `<div class="leg empty"><span class="label">${what}</span><span class="muted">Tap a runner</span></div>`;
-    const r = T.roster[x.i], en = T.energy[r.id], after = clamp(en - legCost(r, ev, x.effort), 0, 100);
+    const r = T.roster[x.i], en = T.energy[r.id], after = clamp(en - legCost(r, ev), 0, 100);
     return `<div class="leg"><span class="label">${what}</span><button class="lname" data-a="dropLeg" data-l="${i}">${esc(short(r))}<span class="after" style="color:${enColor(after)}">${Math.round(en)} to ${Math.round(after)}</span></button>
-      <button class="btn sm eff e${x.effort}" data-a="effort" data-l="${i}">${EFFORT[x.effort].name}</button><b class="num">${fmt(legProj(r, ev, i, x.effort, en))}</b></div>`; }).join('');
-  return `<div class="bar"><div class="box">Race ${M.ev + 1}/3</div><div class="title">${ev.name} <span class="st">${esc(M.title)}</span></div><div class="box num">${T.pts} <span class="yellow">PTS</span></div></div>
+      <b class="num">${fmt(legProj(r, ev, i, en))}</b></div>`; }).join('');
+  return `<div class="bar"><div class="row" style="gap:6px"><button class="btn sm" data-a="leave">Back</button><div class="box">Race ${M.ev + 1}/${EVS().length}</div></div><div class="title">${ev.name} <span class="st">${esc(M.title)}</span></div><div class="box num">${T.pts} <span class="yellow">PTS</span></div></div>
     <div class="lu"><div class="panel rlist"><div class="rhead label"><span></span><span>Runner</span><span>${ev.leg} m best</span><span>Energy</span><span></span></div>${rows}</div>
     <div class="panel legs">${legs}
       <div class="row between"><span class="label">Projected</span><b class="num" style="font-size:16px">${full ? fmt(projected(T, ev, L)) : '-'}</b></div>
@@ -1102,7 +1096,7 @@ function resultHTML(){
   const rows = res.map(o => { const t = M.teams[o.ti]; return `<tr class="${t.user ? 'me' : ''}"><td class="num">${o.place}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${fmt(o.total)}</td><td class="num">+${o.pts}</td><td class="num">${t.pts}</td></tr>`; }).join('');
   const legs = mine.legs.map((l, i) => `<div class="split"><span class="nm">${i + 1}. ${esc(l.name)}${l.tap != null ? ` <span class="${l.early ? 'bad' : l.tap < .3 ? 'good' : 'muted'}">${l.early ? 'early' : l.tap.toFixed(2)}</span>` : ''}${l.behind ? ' <span class="muted">hunt</span>' : ''}${l.pb ? ' <span class="yellow">PB</span>' : ''}</span><b class="num">${fmt(l.t)}</b>${enBar(l.after)}</div>`).join('');
   const next = M.ev + 1 < EVS().length ? `Next: ${EVS()[M.ev + 1].name}` : 'Meet results';
-  return `<div class="bar"><div class="box">Race ${M.ev + 1}/3</div><div class="title">${ev.name} results</div><span></span></div>
+  return `<div class="bar"><div class="box">Race ${M.ev + 1}/${EVS().length}</div><div class="title">${ev.name} results</div><span></span></div>
     <div class="two wide"><div class="panel"><table><tr><th>#</th><th style="text-align:left">Team</th><th>Time</th><th>Pts</th><th>Meet</th></tr>${rows}</table></div>
     <div class="panel stackp"><div class="px place">${ordinal(mine.place)} <span class="num">${fmt(mine.total)}</span></div><div class="row" style="gap:6px">${mine.tp ? `<div class="tag">+${mine.tp} TP</div>` : ''}${mine.record ? '<div class="tag">Program record</div>' : ''}</div>
       <div class="label">Your splits, your taps and what's left in the tank</div>${legs}
@@ -1183,12 +1177,12 @@ const ACT = {
   go:d => { screen = d.s; render(); },
   runner:d => { sel = d.id; screen = 'runner'; render(); },
   train:d => { const r = G.roster.find(x => x.id === sel), cost = trainCost(r, d.k); if (G.tp < cost || r[d.k] >= capOf(d.k)) return; G.tp -= cost; r[d.k] = clamp(r[d.k] + 1, 1, capOf(d.k)); r.tr[d.k] = (r.tr[d.k] || 0) + 1; save(); render(); },
-  meet:() => { startMeet(); save(); render(); },
+  meet:() => { if (!G.meet) startMeet(); away = false; save(); render(); },
+  leave:() => { away = true; screen = 'hub'; render(); },
   pickR:d => { const L = G.lineup, i = +d.i, at = L.findIndex(x => x && x.i === i);
-    if (at >= 0) L[at] = null; else { const free = L.indexOf(null); if (free < 0) return toast('All four legs are filled: tap a leg to free it'); L[free] = { i, effort:1 }; }
+    if (at >= 0) L[at] = null; else { const free = L.indexOf(null); if (free < 0) return toast('All four legs are filled: tap a leg to free it'); L[free] = { i }; }
     render(); },
   dropLeg:d => { G.lineup[+d.l] = null; render(); },
-  effort:d => { const x = G.lineup[+d.l]; x.effort = (x.effort + 1) % 3; render(); },
   auto:() => { const M = G.meet; G.lineup = autoLineup(M.teams.find(t => t.user), EVS()[M.ev]); render(); },
   clear:() => { G.lineup = [null, null, null, null]; render(); },
   race:() => { const M = G.meet; if (!G.lineup.every(Boolean)) return; M.teams.find(t => t.user).lineup = G.lineup.map(x => ({ ...x })); prepRace(); save(); startRace(); },
