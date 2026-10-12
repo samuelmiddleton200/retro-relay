@@ -598,10 +598,11 @@ const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
    back after each race. Starts and handoffs are not ratings any more: you tap them (see the race). */
 const RATE = ['spd', 'end', 'hunt', 'rec'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', hunt:'Hunt', rec:'Recovery' };
-const RATE_DESC = { get spd(){ return `Every Speed upgrade takes 0.026 s off his 100, 0.039 s off his 200${G.level === 'hs' ? ' and 0.052 s off his 400' : ', 0.052 s off his 400 and 0.052 s off his 800'}. 100 Speed and 100 Endurance is 9.40 / 18.80 / 42.50${G.level === 'hs' ? '' : ' / 1:37.00'}.`; },
-  get end(){ return `Every Endurance upgrade takes 0.013 s off his 100, 0.039 s off his 200${G.level === 'hs' ? ' and 0.133 s off his 400' : ', 0.133 s off his 400 and 0.448 s off his 800'}, and a race costs him less energy.`; },
-  hunt:'Every Hunt upgrade over 50 is a 0.1% speed boost on a leg he starts when the team is not in the lead (never on the first leg).',
-  rec:'He gets half his Recovery back in energy after every race: 30 gives 15 back, so each upgrade is 0.5 more.' };
+// what one upgrade does, in 40 characters or fewer (user: quick numbers, no examples)
+const RATE_DESC = { get spd(){ return G.level === 'hs' ? '100 -.026s 200 -.039s 400 -.052s' : '100 -.026 200 -.039 400 -.052 800 -.052'; },
+  get end(){ return G.level === 'hs' ? '100 -.013s 200 -.039s 400 -.133s' : '100 -.013 200 -.039 400 -.133 800 -.448'; },
+  hunt:'+0.1% speed when not leading, over 50',
+  rec:'+0.5 energy back after each race' };
 const capOf = k => 100;
 const huntOf = r => clamp((r.hunt - 50) * .001, 0, .05);
 function makeRunner(level, year = ri(0, 3)){
