@@ -152,7 +152,6 @@ button{font:inherit;color:inherit;cursor:pointer}
 .card .fa-x div{display:flex;justify-content:space-between;gap:4px;white-space:nowrap}
 .card .fa-x span{color:#ffe0d2}
 .card .fa-x b{color:var(--white);font-size:12px}
-.card .fa-x b.t100{color:#7dff95}.card .fa-x b.t200{color:#ffb347}.card .fa-x b.t400{color:#ff6b5e}.card .fa-x b.t800{color:#7cc4ff}
 .card .fa-x .sh{display:none}                                       /* short labels, for narrow phone cards */
 .card .fnm{font-family:var(--px);font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .sal{font-family:var(--px);font-size:12px}
@@ -1038,13 +1037,10 @@ function hubHTML(){
     </div></div>
     <div class="cards four" style="margin-top:10px">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>`;
 }
-// your four best at each distance get that distance's color on their time (user): 100 green, 200 orange, 400 red
-const TOP4 = { 100:'t100', 200:'t200', 400:'t400', 800:'t800' };
-const top4 = (r, d) => G.roster.includes(r) && G.roster.filter(x => pbOf(x, d) < pbOf(r, d)).length < 4;
 function runnerCard(r, extra = '', cls = '', attrs = ''){
   return `<button class="card ${cls}" ${attrs}><div class="top" style="background:${G.school.c1}"><span class="pos">${YEARS[r.year]}</span><img src="${portrait(r, G.school.c1)}" alt=""></div>
     <div class="bot"><div class="fnm">${esc(r.fn)}</div><div class="nm">${esc(r.ln)}</div>
-    <div class="fa-x">${DISTS().map(d => `<div><span>${d}</span><b class="num ${top4(r, d) ? TOP4[d] : ''}">${fmt(pbOf(r, d))}</b></div>`).join('')}</div>${extra}</div></button>`;
+    <div class="fa-x">${DISTS().map(d => `<div><span>${d}</span><b class="num">${fmt(pbOf(r, d))}</b></div>`).join('')}</div>${extra}</div></button>`;
 }
 function squadHTML(){
   return topBar('Squad', backBtn) + `<div class="cards four">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>
