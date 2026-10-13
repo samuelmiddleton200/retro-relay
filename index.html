@@ -401,6 +401,8 @@ input[type=text]{width:100%;background:var(--navy);border:3px solid var(--white)
 .place{font-size:22px}.place .num{font-size:20px;margin-left:8px}
 td.tl{text-align:left}
 .htag{flex:none;font-family:var(--px);font-size:8px;letter-spacing:0;background:var(--yellow);color:#241a00;border-radius:3px;padding:1px 3px;text-transform:uppercase}   /* never clipped (user): the name gives way, not the tag */
+.avgtabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:6px}
+.avg{padding:6px 10px}.avg table{font-size:12px}.avg td{padding:1px 6px}.avg .fine{font-family:var(--numf);font-size:11px;margin-top:4px;color:#ffe0d2}
 .trow{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .ldr{display:grid;gap:8px}.ldr .panel{padding:6px 8px;min-width:0}.ldr table{font-size:12px}.ldr td{padding:1px 4px}.ldr td.tl{max-width:0;width:100%;overflow:hidden}
 .dot{display:inline-block;width:11px;height:11px;border:2px solid;border-radius:2px;flex:none}
@@ -793,7 +795,6 @@ function bookRace(res){
   mine.tp = (RACE_TP[mine.place - 1] || 0) * (M.big ? 2 : 1); G.tp += mine.tp;
   // personal bests: the fastest split each of your runners has actually run at this distance (user)
   for (const l of mine.legs) { const r = G.roster.find(x => x.id === l.id); if (!r) continue; r.pb ||= {}; if (!r.pb[ev.leg] || l.t < r.pb[ev.leg]) { l.pb = true; r.pb[ev.leg] = l.t; } }
-  res.forEach(o => { const lt = G.teams.find(x => x.id === M.teams[o.ti].id); if (lt && !lt.user && (!lt.best[ev.key] || o.total < lt.best[ev.key])) lt.best[ev.key] = o.total; });
   // bests: the team's season best in each relay and your program records
   const T = me(); if (!T.best[ev.key] || mine.total < T.best[ev.key]) T.best[ev.key] = mine.total;
   const rec = G.records[ev.key]; mine.record = !rec || mine.total < rec.t; if (mine.record) G.records[ev.key] = { t:mine.total, season:G.season, school:G.school.abbr };
@@ -807,14 +808,6 @@ function afterEvent(){
   if (M.ev < EVS().length) { restAll(M); G.lineup = null; return false; }
   finishMeet(); return true;
 }
-// a meet you were not at: the teams run every relay (computer taps) so that they have season-best times to show
-function shadowMeet(teams){
-  if (!teams.length) return;
-  const m = { teams:teams.map(t => ({ lt:t, roster:t.roster, user:false, lineup:null, energy:Object.fromEntries(t.roster.map(r => [r.id, 100])) })) };
-  EVS().forEach(ev => { m.teams.forEach(t => { t.lineup = autoLineup(t, ev); });
-    runEvent(m, ev).forEach(o => { const t = m.teams[o.ti]; o.legs.forEach(l => { t.energy[l.id] = l.after; }); if (!t.lt.best[ev.key] || o.total < t.lt.best[ev.key]) t.lt.best[ev.key] = o.total; });
-    restAll(m); });
-}
 // the meet is over: places by total points (the 4x400 breaks ties), training points for the top three, and what it means for the season
 function finishMeet(){
   const M = G.meet, last = M.done[M.done.length - 1].res;
@@ -824,7 +817,6 @@ function finishMeet(){
   const sum = { title:M.title, place, tp, order:order.map(t => ({ abbr:t.abbr, name:t.name, c1:t.c1, c2:t.c2, user:t.user, pts:t.pts })), times:M.done.map(d => d.res.find(o => M.teams[o.ti].user).total), big:M.big };
   if (!M.big) {                                                       // a regular meet: season points for everyone who ran, the rest of the area has its own meet
     M.teams.forEach(t => { const lt = G.teams.find(x => x.id === t.id); if (lt) { lt.pts += t.pts; lt.meets++; } });
-    shadowMeet(G.teams.filter(t => !M.teams.some(x => x.id === t.id)));
     G.teams.filter(t => !M.teams.some(x => x.id === t.id)).forEach(t => { t.pts += Math.round(clamp(15 + (t.base - avg(G.teams.map(x => x.user ? teamLevel(x) : x.base))) * 1.1 + rnd(-5, 5), 4, 28)); t.meets++; });
     G.meetNo++;
     if (G.meetNo >= MEETS) {
@@ -1012,7 +1004,7 @@ function portrait(p, c1){
 }
 
 /* ============================ UI ============================ */
-let screen = 'hub', sel = null, pickedTeam = null, away = false, ldrRelays = false;   // away: you stepped back from the meet's lineup screen to the menus
+let screen = 'hub', sel = null, pickedTeam = null, away = false, avgTab = 0;   // away: you stepped back from the meet's lineup screen to the menus
 const LEVEL_NAME = { hs:'High school', d2:'Division 2', d1:'Division 1', usa:'Team USA', nation:'Olympics' };
 const badge = (t, cls = '') => `<div class="badge ${cls}" style="background:${t.c1};border-color:${t.c2};color:${t.c2}">${esc(t.abbr.slice(0, 4))}</div>`;
 const chipDot = t => `<i class="dot" style="background:${t.c1};border-color:${t.c2}"></i>`;
@@ -1032,7 +1024,7 @@ function render(){
   else if (G.meet && (G.meet.watching || !away)) { s = G.meet.watching ? 'result' : 'lineup'; f = s === 'result' ? resultHTML : lineupHTML; }
   else if (G.last && !G.last.seen) { s = 'post'; f = postHTML; }
   else if (G.phase === 'off') { s = 'off'; f = offHTML; }
-  else { f = { squad:squadHTML, runner:runnerHTML, table:tableHTML, leaders:leadersHTML, records:recordsHTML }[s]; if (!f) { s = 'hub'; f = hubHTML; } }
+  else { f = { squad:squadHTML, runner:runnerHTML, table:tableHTML, leaders:averagesHTML, records:recordsHTML }[s]; if (!f) { s = 'hub'; f = hubHTML; } }
   ui.innerHTML = f();
   ui.dataset.screen = s; window.scrollTo(0, 0); ui.scrollTop = 0;
 }
@@ -1100,30 +1092,38 @@ function tableHTML(){
   const st = standings();
   const rows = st.map((t, i) => `<tr class="${t.user ? 'me' : ''} ${i === 3 ? 'cut' : ''}"><td class="num">${i + 1}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${t.meets}</td><td class="num">${t.pts}</td></tr>`).join('');
   const body = G.level === 'usa' ? `<div class="muted">The Olympics are a single meet: no standings.</div>` : `<table><tr><th>#</th><th style="text-align:left">Team</th><th>Meets</th><th>Pts</th></tr>${rows}</table>`;
-  return topBar('Standings', `<button class="btn sm" data-a="ldr" data-m="0">Fastest</button>${backBtn}`) + `<div class="panel">${body}</div>
+  return topBar('Standings', `<button class="btn sm" data-a="go" data-s="leaders">Averages</button>${backBtn}`) + `<div class="panel">${body}</div>
     <div class="muted fanote" style="font-size:13px;margin-top:8px">Each relay scores 10-8-6-4-2-1. After three meets the top three go on to ${STAGES[G.level][0]}.</div>`;
 }
-// every runner in your league (and in the meet you are at), fastest first at each distance: the top eight, the league
-// average and where your best man stands (user: like the league leaders in Retro Basket; the 1600 from college up)
-// by team (user): each league team's best time this season in every relay, fastest first
-function relaysHTML(){
-  const cols = EVS().map(ev => { const list = [...G.teams].sort((a, b) => (a.best[ev.key] || 1e9) - (b.best[ev.key] || 1e9));
-    const rows = list.map((t, i) => `<tr class="${t.user ? 'me' : ''}"><td class="num">${t.best[ev.key] ? i + 1 : ''}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${t.best[ev.key] ? fmt(t.best[ev.key]) : '-'}</td></tr>`).join('');
-    return `<div class="panel"><div class="label">Best ${ev.name}</div><table>${rows}</table></div>`; }).join('');
-  return topBar('Best relays', `<button class="btn sm" data-a="ldr" data-m="0">Runners</button>${backBtn}`) + `<div class="ldr" style="grid-template-columns:repeat(${EVS().length},minmax(0,1fr))">${cols}</div>
-    <div class="muted fanote" style="font-size:12px;margin-top:6px">Season bests. Teams that were not at your meet run one of their own.</div>`;
+/* ---- Averages (user): how good you need to be ----
+   For every kind of meet in the game, from a high school regular meet to the Olympics, what the six teams there run in
+   each race: the average, what third place runs (third is what gets you through most rounds) and what wins.
+   One page per race. The numbers come from running 60 meets of computer teams at each level the first time you look
+   (they tap like the teams you race, and tire through the meet as you do), so they move as the game's numbers do. */
+const AVG_ROWS = [
+  ['HS meets', 'hs:m', () => rnd(...LEVELS.hs.area), 3], ['HS District', 'hs:0', () => rnd(...LEVELS.hs.stage[0]), 3], ['HS State', 'hs:1', () => rnd(...LEVELS.hs.stage[1]), 3], ['HS Nationals', 'hs:2', () => rnd(...LEVELS.hs.stage[2]), 3],
+  ['D2 meets', 'd2:m', () => rnd(...LEVELS.d2.area), 4], ['D2 Conference', 'd2:0', () => rnd(...LEVELS.d2.stage[0]), 4], ['D2 Nationals', 'd2:1', () => rnd(...LEVELS.d2.stage[1]), 4],
+  ['D1 meets', 'd1:m', () => pick(LEVELS.d1.tier.slice(1)) + rnd(-1.5, 1.5), 4], ['D1 Conference', 'd1:0', () => rnd(...LEVELS.d1.stage[0]), 4], ['NCAA Championships', 'd1:1', () => rnd(...LEVELS.d1.stage[1]), 4],
+  ['Olympics', 'usa:0', () => rnd(...LEVELS.usa.field), 4]];
+let AVG = null;
+function averages(){
+  if (AVG) return AVG;
+  const N = 60;
+  return AVG = AVG_ROWS.map(([name, key, level, n]) => { const evs = EVENTS.slice(0, n), acc = evs.map(() => [0, 0, 0]);
+    for (let k = 0; k < N; k++) { const meet = { teams:Array.from({ length:6 }, () => { const t = mkTeam(school(HS_AWAY[0], 'hs'), level()); t.energy = Object.fromEntries(t.roster.map(r => [r.id, 100])); return t; }) };
+      evs.forEach((ev, e) => { meet.teams.forEach(t => { t.lineup = autoLineup(t, ev); }); const out = runEvent(meet, ev);
+        out.forEach(o => o.legs.forEach(l => { meet.teams[o.ti].energy[l.id] = l.after; }));
+        acc[e][0] += avg(out.map(o => o.total)); acc[e][1] += out[2].total; acc[e][2] += out[0].total; restAll(meet); }); }
+    return { name, key, t:Object.fromEntries(evs.map((ev, e) => [ev.key, acc[e].map(x => x / N)])) }; });
 }
-function leadersHTML(){
-  if (ldrRelays) return relaysHTML();
-  const teams = [...G.teams]; if (G.meet) G.meet.teams.forEach(t => { if (!teams.some(x => x.id === t.id)) teams.push(t); });
-  const all = teams.flatMap(t => t.roster.map(r => ({ r, t })));
-  const cols = DISTS().map(d => { const list = all.map(x => ({ ...x, v:pbOf(x.r, d) })).sort((a, b) => a.v - b.v);
-    const rows = list.slice(0, 8).map((x, i) => `<tr class="${x.t.user ? 'me' : ''}"><td class="num">${i + 1}</td><td class="tl"><span class="trow">${chipDot(x.t)}${esc(short(x.r))}</span></td><td class="num">${fmt(x.v)}</td></tr>`).join('');
-    const mine = list.findIndex(x => x.t.user);
-    return `<div class="panel"><div class="label">Fastest ${d} m</div><table>${rows}
-      <tr><td></td><td class="tl muted">League average</td><td class="num">${fmt(avg(list.map(x => x.v)))}</td></tr>
-      <tr class="me"><td class="num">${mine + 1}</td><td class="tl">Your best</td><td class="num">${fmt(list[mine].v)}</td></tr></table></div>`; }).join('');
-  return topBar('Fastest runners', `<button class="btn sm" data-a="ldr" data-m="1">Relays</button>${backBtn}`) + `<div class="ldr" style="grid-template-columns:repeat(${DISTS().length},minmax(0,1fr))">${cols}</div>`;
+function averagesHTML(){
+  const ev = EVENTS[avgTab], T = me(), here = `${G.level}:${G.phase === 'stage' ? G.stage : 'm'}`;
+  const tabs = EVENTS.map((e, i) => `<button class="btn sm ${i === avgTab ? 'go' : ''}" data-a="avg" data-i="${i}">${e.name}</button>`).join('');
+  const rows = averages().filter(r => r.t[ev.key]).map(r => `<tr class="${r.key === here ? 'me' : ''}"><td class="tl">${r.name}${r.key === here ? ' (you are here)' : ''}</td>${r.t[ev.key].map(v => `<td class="num">${fmt(v)}</td>`).join('')}</tr>`).join('');
+  const mine = T && T.best[ev.key] ? fmt(T.best[ev.key]) : '-';
+  return topBar('Averages', `<button class="btn sm" data-a="go" data-s="table">Standings</button>${backBtn}`) + `<div class="avgtabs">${tabs}</div>
+    <div class="panel avg"><table><tr><th style="text-align:left">${ev.name}</th><th>Average</th><th>3rd place</th><th>Winner</th></tr>${rows}</table>
+    <div class="fine">Your best ${ev.name} this season: <b class="yellow num">${mine}</b>${ev.solo ? '. Run from college up.' : ''}</div></div>`;
 }
 function recordsHTML(){
   const T = me();
@@ -1140,7 +1140,7 @@ function recordsHTML(){
 // (saved as r.hunter: it was first called a hunter mark)
 const hunterTag = r => r.hunter ? '<span class="htag">Anchor</span>' : '';
 function lineupHTML(){
-  const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= Array(ev.solo ? 1 : 4).fill(null);   // nothing filled in for you (user); the 1600 has one spot
+  const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), spots = ev.solo ? 1 : 4, L = G.lineup = G.lineup && G.lineup.length === spots ? G.lineup : Array(spots).fill(null);   // nothing filled in for you (user); the 1600 has one spot
   // fastest first by his best time for this distance (user: tried energy order, went back to this); what his tiredness adds is shown under it
   const now = r => legRun(r, ev, 1, T.energy[r.id]);
   const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => pbOf(a.r, ev.leg) - pbOf(b.r, ev.leg)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, en) - legRun(r, ev, 1, 100);
@@ -1244,7 +1244,7 @@ const ACT = {
   pickTeam:d => { pickedTeam = d.t; render(); },
   create:() => { if (!pickedTeam) return; newCareer(pickedTeam); save(); screen = 'hub'; render(); },
   go:d => { screen = d.s; render(); },
-  ldr:d => { ldrRelays = d.m === '1'; screen = 'leaders'; render(); },
+  avg:d => { avgTab = +d.i; render(); },
   runner:d => { sel = d.id; screen = 'runner'; render(); },
   hunter:() => { const r = G.roster.find(x => x.id === sel); if (!r) return; r.hunter = !r.hunter; save(); render(); },
   train:d => { const r = G.roster.find(x => x.id === sel), cost = trainCost(r, d.k); if (G.tp < cost || r[d.k] >= capOf(d.k)) return; G.tp -= cost; r[d.k] = clamp(r[d.k] + 1, 1, capOf(d.k)); r.tr[d.k] = (r.tr[d.k] || 0) + 1; save(); render(); },
