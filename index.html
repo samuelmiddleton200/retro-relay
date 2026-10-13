@@ -521,11 +521,11 @@ const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet p
 const YEARS = ['FR', 'SO', 'JR', 'SR'];
 // There is no Easy / Steady / All out any more (user): every runner on every team runs all out every time, so what a
 // leg costs is fixed (the costs above are an all-out leg) and stamina comes down to Endurance and Recovery.
-// training points (user): every place pays something, so a last place still buys a little training. Per relay 4-3-3-2-1-1,
-// for the meet 8-6-5-4-3-2, both doubled at championship meets; and qualifying for a championship meet pays QUAL_TP,
-// 25 if it is the last one at your level (Nationals, NCAA), else 15.
-const RACE_TP = [4, 3, 3, 2, 1, 1], MEET_TP = [8, 6, 5, 4, 3, 2];
-const qualTP = stage => stage === STAGES[G.level].length - 1 ? 25 : 15;
+// training points (user): every place pays something, so a last place still buys a little training. Per relay 5-4-3-3-2-2,
+// for the meet 12-9-7-5-5-5, both doubled at championship meets; and qualifying for a championship meet pays qualTP:
+// 50 if it is the last one at your level (Nationals, NCAA), else 25.
+const RACE_TP = [5, 4, 3, 3, 2, 2], MEET_TP = [12, 9, 7, 5, 5, 5];
+const qualTP = stage => stage === STAGES[G.level].length - 1 ? 50 : 25;
 
 /* ---- schools: [name, short, singlet color, shorts color]. One uniform each (user): a singlet and shorts. ---- */
 const HS = [
@@ -1080,7 +1080,7 @@ function runnerCard(r, extra = '', cls = '', attrs = ''){
 }
 function squadHTML(){
   return topBar('Squad', backBtn) + `<div class="cards four">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>
-    <div class="muted fanote" style="font-size:13px;margin-top:10px">Tap a runner to train him. Training points (TP): 4, 3, 3, 2, 1, 1 for 1st to 6th in a relay and 8, 6, 5, 4, 3, 2 for the meet (doubled at championship meets), plus 15 for qualifying for a championship meet (25 for the last one).</div>`;
+    <div class="muted fanote" style="font-size:13px;margin-top:10px">Tap a runner to train him. Training points (TP): 5, 4, 3, 3, 2, 2 for 1st to 6th in a relay and 12, 9, 7, 5, 5, 5 for the meet (doubled at championship meets), plus 25 for qualifying for a championship meet (50 for the last one).</div>`;
 }
 // a rating as a health bar (user): 15 is a short red-orange bar, 50 yellow, 80 and up green
 const barColor = v => { const h = clamp(v, 0, 100) * 1.25; return `linear-gradient(90deg, hsl(${Math.max(0, h - 22)} 78% 42%), hsl(${h} 74% 48%))`; };
