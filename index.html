@@ -400,7 +400,7 @@ input[type=text]{width:100%;background:var(--navy);border:3px solid var(--white)
 .stackp{display:grid;gap:8px;align-content:start}
 .place{font-size:22px}.place .num{font-size:20px;margin-left:8px}
 td.tl{text-align:left}
-.htag{font-family:var(--px);font-size:9px;letter-spacing:.04em;background:var(--yellow);color:#241a00;border-radius:3px;padding:1px 4px;vertical-align:1px;text-transform:uppercase}
+.htag{flex:none;font-family:var(--px);font-size:8px;letter-spacing:0;background:var(--yellow);color:#241a00;border-radius:3px;padding:1px 3px;text-transform:uppercase}   /* never clipped (user): the name gives way, not the tag */
 .trow{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .ldr{display:grid;gap:8px}.ldr .panel{padding:6px 8px;min-width:0}.ldr table{font-size:12px}.ldr td{padding:1px 4px}.ldr td.tl{max-width:0;width:100%;overflow:hidden}
 .dot{display:inline-block;width:11px;height:11px;border:2px solid;border-radius:2px;flex:none}
@@ -415,7 +415,10 @@ td.tl{text-align:left}
 .rrow{width:100%;border:2px solid rgba(255,255,255,.25);border-radius:6px;background:var(--blue-dd);padding:3px 6px;text-align:left}
 .rrow.on{border-color:var(--yellow)}
 .rrow img{width:28px;height:28px;image-rendering:pixelated;border-radius:3px;display:block}
-.rrow .nm{font-family:var(--px);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rrow .nm{font-family:var(--px);font-size:11px;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:4px;min-width:0}
+.rrow .nm .nt,.lname .nt{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.rrow .yr{flex:none}
+.lname .lrow{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
 .rrow .yr{font-size:10px;color:#ffe0d2}
 .rrow .pb{text-align:right;font-size:14px;line-height:1.05}.rrow .pb small{display:block;font-size:10px;color:#ffb36b}
 .legs{display:grid;gap:6px}
@@ -1134,21 +1137,21 @@ function recordsHTML(){
 /* ---- the meet: the order your four run in ---- */
 // a runner you have marked as an anchor on his page (user): a reminder, shown wherever you set the order, of who runs last
 // (saved as r.hunter: it was first called a hunter mark)
-const hunterTag = r => r.hunter ? ' <span class="htag">Anchor</span>' : '';
+const hunterTag = r => r.hunter ? '<span class="htag">Anchor</span>' : '';
 function lineupHTML(){
   const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= [null, null, null, null];   // nothing filled in for you (user)
   // the freshest first: most energy to least (user); the time shown is still his best for this distance, with what his tiredness adds under it
   const now = r => legRun(r, ev, 1, T.energy[r.id]);
   const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => T.energy[b.r.id] - T.energy[a.r.id] || now(a.r) - now(b.r)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, en) - legRun(r, ev, 1, 100);
     return `<button class="rrow ${leg >= 0 ? 'on' : ''}" data-a="pickR" data-i="${i}"><img src="${portrait(r, G.school.c1)}" alt="">
-      <span class="nm">${esc(short(r))} <span class="yr">${YEARS[r.year]}</span>${hunterTag(r)}</span>
+      <span class="nm"><span class="nt">${esc(short(r))}</span><span class="yr">${YEARS[r.year]}</span>${hunterTag(r)}</span>
       <span class="num pb">${fmt(pbOf(r, ev.leg))}${slow >= .05 ? `<small>+${slow.toFixed(2)}</small>` : ''}</span>
       ${enBar(en)}<span class="tag ${leg >= 0 ? '' : 'off'}">${leg >= 0 ? 'LEG ' + (leg + 1) : ''}</span></button>`; }).join('');
   const full = L.every(Boolean);
   const legs = L.map((x, i) => { const what = ['Start', 'Leg 2', 'Leg 3', 'Anchor'][i];
     if (!x) return `<div class="leg empty"><span class="label">${what}</span><span class="muted">Tap a runner</span></div>`;
     const r = T.roster[x.i], en = T.energy[r.id], after = clamp(en - legCost(r, ev), 0, 100);
-    return `<div class="leg"><span class="label">${what}</span><button class="lname" data-a="dropLeg" data-l="${i}">${esc(short(r))}${hunterTag(r)}<span class="after" style="color:${enColor(after)}">${Math.round(en)} to ${Math.round(after)}</span></button>
+    return `<div class="leg"><span class="label">${what}</span><button class="lname" data-a="dropLeg" data-l="${i}"><span class="lrow"><span class="nt">${esc(short(r))}</span>${hunterTag(r)}</span><span class="after" style="color:${enColor(after)}">${Math.round(en)} to ${Math.round(after)}</span></button>
       <b class="num">${fmt(legProj(r, ev, i, en))}</b></div>`; }).join('');
   return `<div class="bar"><div class="row" style="gap:6px"><button class="btn sm" data-a="leave">Back</button><div class="box">Race ${M.ev + 1}/${EVS().length}</div></div><div class="title">${ev.name} <span class="st">${esc(M.title)}</span></div><div class="box num">${T.pts} <span class="yellow">PTS</span></div></div>
     <div class="lu"><div class="panel rlist"><div class="rhead label"><span></span><span>Runner</span><span>${ev.leg} m best</span><span>Energy</span><span></span></div>${rows}</div>
