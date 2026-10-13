@@ -1140,9 +1140,9 @@ function recordsHTML(){
 const hunterTag = r => r.hunter ? '<span class="htag">Anchor</span>' : '';
 function lineupHTML(){
   const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= [null, null, null, null];   // nothing filled in for you (user)
-  // the freshest first: most energy to least (user); the time shown is still his best for this distance, with what his tiredness adds under it
+  // fastest first by his best time for this distance (user: tried energy order, went back to this); what his tiredness adds is shown under it
   const now = r => legRun(r, ev, 1, T.energy[r.id]);
-  const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => T.energy[b.r.id] - T.energy[a.r.id] || now(a.r) - now(b.r)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, en) - legRun(r, ev, 1, 100);
+  const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => pbOf(a.r, ev.leg) - pbOf(b.r, ev.leg)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, en) - legRun(r, ev, 1, 100);
     return `<button class="rrow ${leg >= 0 ? 'on' : ''}" data-a="pickR" data-i="${i}"><img src="${portrait(r, G.school.c1)}" alt="">
       <span class="nm"><span class="nt">${esc(short(r))}</span><span class="yr">${YEARS[r.year]}</span>${hunterTag(r)}</span>
       <span class="num pb">${fmt(pbOf(r, ev.leg))}${slow >= .05 ? `<small>+${slow.toFixed(2)}</small>` : ''}</span>
