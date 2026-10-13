@@ -661,7 +661,7 @@ function projected(team, ev, lineup){
   lineup.forEach((L, i) => { const r = team.roster[L.i]; t += legProj(r, ev, i, team.energy[r.id] ?? 100); });
   return t;
 }
-// the computer's order (and your Auto button): the man with the least Hunt leads off (it never counts there), then slowest to fastest
+// the computer's order (and the order your lineup starts in): the man with the least Hunt leads off (it never counts there), then slowest to fastest
 function autoLineup(team, ev){
   const idx = team.roster.map((r, i) => ({ i, t:legRun(r, ev, 1, team.energy[r.id] ?? 100), hunt:r.hunt })).sort((a, b) => a.t - b.t).slice(0, 4);
   const lead = idx.slice().sort((a, b) => a.hunt - b.hunt)[0], rest = idx.filter(x => x !== lead).sort((a, b) => b.t - a.t);
@@ -1149,7 +1149,7 @@ function lineupHTML(){
     <div class="lu"><div class="panel rlist"><div class="rhead label"><span></span><span>Runner</span><span>${ev.leg} m best</span><span>Energy</span><span></span></div>${rows}</div>
     <div class="panel legs">${legs}
       <div class="row between"><span class="label">Projected</span><b class="num" style="font-size:16px">${full ? fmt(projected(T, ev, L)) : '-'}</b></div>
-      <div class="row" style="gap:6px"><button class="btn sm" data-a="auto">Auto</button><button class="btn sm" data-a="clear">Clear</button><button class="btn go grow" data-a="race" ${full ? '' : 'disabled'}>Race</button></div></div></div>`;
+      <div class="row" style="gap:6px"><button class="btn sm" data-a="clear">Clear</button><button class="btn go grow" data-a="race" ${full ? '' : 'disabled'}>Race</button></div></div></div>`;
 }
 function resultHTML(){
   const M = G.meet, ev = EVS()[M.ev], res = M.last, mine = res.find(o => M.teams[o.ti].user);
@@ -1244,7 +1244,6 @@ const ACT = {
     if (at >= 0) L[at] = null; else { const free = L.indexOf(null); if (free < 0) return toast('All four legs are filled: tap a leg to free it'); L[free] = { i }; }
     render(); },
   dropLeg:d => { G.lineup[+d.l] = null; render(); },
-  auto:() => { const M = G.meet; G.lineup = autoLineup(M.teams.find(t => t.user), EVS()[M.ev]); render(); },
   clear:() => { G.lineup = [null, null, null, null]; render(); },
   race:() => { const M = G.meet; if (!G.lineup.every(Boolean)) return; M.teams.find(t => t.user).lineup = G.lineup.map(x => ({ ...x })); prepRace(); save(); startRace(); },
   next:() => { G.meet.watching = false; afterEvent(); save(); render(); },
