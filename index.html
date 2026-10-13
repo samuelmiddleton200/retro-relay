@@ -521,6 +521,7 @@ const DISTS = () => EVS().map(e => e.leg);
 const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet points for places 1-6 in each relay
 const POINTS8 = [10, 8, 6, 5, 4, 3, 2, 1];                            // an eight-lane national final scores eight places, as real meets do (user)
 const YEARS = ['FR', 'SO', 'JR', 'SR'];
+const yrOf = r => G.level === 'usa' ? '' : YEARS[r.year];             // Team USA runners are not students: no class year (user)
 // There is no Easy / Steady / All out any more (user): every runner on every team runs all out every time, so what a
 // leg costs is fixed (the costs above are an all-out leg) and stamina comes down to Endurance and Recovery.
 // training points (user): every place pays something, so a last place still buys a little training. Per relay 5-4-3-3-2-2,
@@ -926,14 +927,17 @@ function nextSeason(){
       while (G.roster.length < SQUAD) G.roster.push(makeRunner(G.prog + 4, 0));
     }
     G.newJob = false;
-    if (G.usaNext) {                                                  // NCAA champions: the national team for one meet
-      G.usaNext = false; G.college = { school:G.school, level:G.level, roster:G.roster };
-      G.school = school(NATIONS[0], 'nation'); G.level = 'usa'; G.roster = Array.from({ length:SQUAD }, () => makeRunner(LEVELS.usa.you, 2));
-      G.phase = 'stage'; G.stage = 0; G.meetNo = 0; G.off = null; G.stateWon = false; buildLeagueUSA(); return;
-    }
   }
   G.phase = 'meets'; G.meetNo = 0; G.stage = 0; G.off = null; G.stateWon = false; G.reach = 0;
   buildLeague();
+}
+// NCAA champions (user): straight to the national team for one meet, nothing asked first. The college offseason
+// (job offers, recruiting) is put away as it stands and picked up again after the Olympics.
+function goUSA(){
+  G.usaNext = false; G.college = { school:G.school, level:G.level, roster:G.roster, off:G.off, offers:G.offers };
+  G.school = school(NATIONS[0], 'nation'); G.level = 'usa'; G.roster = Array.from({ length:SQUAD }, () => makeRunner(LEVELS.usa.you, 2));
+  G.offers = []; G.phase = 'stage'; G.stage = 0; G.meetNo = 0; G.off = null; G.stateWon = false; buildLeagueUSA();
+  screen = 'hub'; save(); render();
 }
 function buildLeagueUSA(){ G.teams = [{ ...G.school, id:'USA', user:true, roster:G.roster, base:0, pts:0, meets:0, best:{} }]; }
 // training: 1 point onto a rating (user). A runner you have never trained costs 2 / 2 / 1 / 2 (Speed, Endurance, Hunt,
@@ -1089,7 +1093,7 @@ function hubHTML(){
     <div class="cards four" style="margin-top:10px">${G.roster.map(r => runnerCard(r, '', '', `data-a="runner" data-id="${r.id}"`)).join('')}</div>`;
 }
 function runnerCard(r, extra = '', cls = '', attrs = ''){
-  return `<button class="card ${cls}" ${attrs}><div class="top" style="background:${G.school.c1}"><span class="pos">${YEARS[r.year]}</span><img src="${portrait(r, G.school.c1)}" alt=""></div>
+  return `<button class="card ${cls}" ${attrs}><div class="top" style="background:${G.school.c1}">${yrOf(r) ? `<span class="pos">${yrOf(r)}</span>` : ''}<img src="${portrait(r, G.school.c1)}" alt=""></div>
     <div class="bot"><div class="fnm">${esc(r.fn)}</div><div class="nm">${esc(r.ln)}</div>
     <div class="fa-x">${DISTS().map(d => `<div><span>${d}</span><b class="num">${fmt(pbOf(r, d))}</b></div>`).join('')}</div>${extra}</div></button>`;
 }
@@ -1105,7 +1109,7 @@ function runnerHTML(){
     return `<div class="rt"><span class="nm">${RATE_NAME[k]}</span><div class="hbar"><i style="width:${r[k]}%;background:${barColor(r[k])}"></i></div><b class="num">${r[k]}</b>
       <button class="btn sm" data-a="train" data-k="${k}" ${max || G.tp < cost ? 'disabled' : ''}>${max ? 'Maxed' : `+1 for ${cost} TP`}</button></div><div class="rdesc">${RATE_DESC[k]}</div>`; }).join('');
   return topBar(esc(`${r.fn} ${r.ln}`), `<button class="btn sm" data-a="go" data-s="squad">Back</button>`) + `<div class="pp">
-    <div class="face"><div class="top" style="background:${G.school.c1}"><img src="${portrait(r, G.school.c1)}" alt=""></div><div class="bot"><div class="px">${['Freshman', 'Sophomore', 'Junior', 'Senior'][r.year]}</div>
+    <div class="face"><div class="top" style="background:${G.school.c1}"><img src="${portrait(r, G.school.c1)}" alt=""></div><div class="bot"><div class="px">${G.level === 'usa' ? 'Team USA' : ['Freshman', 'Sophomore', 'Junior', 'Senior'][r.year]}</div>
       <div class="bests num"><span class="label"></span><span class="label">Rated</span><span class="label">Best</span>${DISTS().map(d => `<span>${d}</span><b>${fmt(pbOf(r, d))}</b><b class="yellow">${r.pb && r.pb[d] ? fmt(r.pb[d]) : '-'}</b>`).join('')}</div>
       <button class="btn sm ${r.hunter ? 'go' : ''}" style="margin-top:6px;width:100%" data-a="hunter">${r.hunter ? 'Anchor: on' : 'Mark as anchor'}</button></div></div>
     <div class="panel">${rows}</div></div>`;
@@ -1167,7 +1171,7 @@ function lineupHTML(){
   const now = r => legRun(r, ev, 1, T.energy[r.id]);
   const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => pbOf(a.r, ev.leg) - pbOf(b.r, ev.leg)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, en) - legRun(r, ev, 1, 100);
     return `<button class="rrow ${leg >= 0 ? 'on' : ''}" data-a="pickR" data-i="${i}"><img src="${portrait(r, G.school.c1)}" alt="">
-      <span class="nm"><span class="nt">${esc(short(r))}</span><span class="yr">${YEARS[r.year]}</span>${hunterTag(r)}</span>
+      <span class="nm"><span class="nt">${esc(short(r))}</span><span class="yr">${yrOf(r)}</span>${hunterTag(r)}</span>
       <span class="num pb">${fmt(pbOf(r, ev.leg))}${slow >= .05 ? `<small>+${slow.toFixed(2)}</small>` : ''}</span>
       ${enBar(en)}<span class="tag ${leg >= 0 ? '' : 'off'}">${leg >= 0 ? (ev.solo ? 'RUNS' : 'LEG ' + (leg + 1)) : ''}</span></button>`; }).join('');
   const full = L.every(Boolean);
@@ -1223,7 +1227,7 @@ function offHTML(){
       <div class="muted fanote" style="font-size:13px;margin-top:8px">Pick ${O.picks} freshm${O.picks === 1 ? 'a' : 'e'}n to replace your seniors. Better seasons bring better recruits.</div>`;
   }
   const grew = O.grew.map(g => `<tr><td>${esc(g.name)}</td><td>${g.yr}</td><td class="num">${fmt(g.from)}</td><td class="num good">${fmt(g.to)}</td></tr>`).join('');
-  const nextTxt = usa ? 'Back to college' : G.offers.length ? `Job offers (${G.offers.length})` : 'Recruiting';
+  const nextTxt = usa ? 'Back to college' : G.usaNext ? 'Team USA' : G.offers.length ? `Job offers (${G.offers.length})` : 'Recruiting';
   return `<div class="bar"><span></span><div class="title">Season ${G.season} is over</div><button class="btn go sm" data-a="offNext">${nextTxt}</button></div>
     <div class="two"><div class="panel stackp"><div class="label">${esc(G.school.name)}</div><div class="px" style="font-size:18px">${esc(O.finish)}</div>
       ${G.usaNext ? '<div class="yellow" style="font-size:14px">National champions: you take Team USA to the Olympics this summer.</div>' : ''}
@@ -1281,7 +1285,11 @@ const ACT = {
   race:() => { const M = G.meet; if (!G.lineup.every(Boolean)) return; M.teams.find(t => t.user).lineup = G.lineup.map(x => ({ ...x })); prepRace(); save(); startRace(); },
   next:() => { G.meet.watching = false; afterEvent(); save(); render(); },
   postOk:() => { G.last.seen = true; save(); render(); },
-  offNext:() => { if (G.level === 'usa') return offFinish(); if (G.offers.length) { G.off.step = 'offers'; save(); render(); } else offRecruit(); },
+  offNext:() => {
+    if (G.level === 'usa') { if (!G.college || !G.college.off) return offFinish();   // a save from before goUSA: its offseason was already done
+      Object.assign(G, G.college); G.college = null; }                               // back to college, to the offseason you left
+    else if (G.usaNext) return goUSA();
+    if (G.offers.length) { G.off.step = 'offers'; save(); render(); } else offRecruit(); },
   stay:() => offRecruit(),
   offer:d => { const t = G.offers.find(x => x.abbr === d.t); confirmSheet(`Take the job at <b>${esc(t.name)}</b>? You leave ${esc(G.school.name)} for good.`, 'Take it', () => { takeJob(t); offFinish(); }); },
   rec:d => { const O = G.off, at = O.sel.indexOf(d.id); if (at >= 0) O.sel.splice(at, 1); else if (O.sel.length < O.picks) O.sel.push(d.id); else return toast(`Only ${O.picks} spot${O.picks === 1 ? '' : 's'} open`); render(); },
