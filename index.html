@@ -401,7 +401,7 @@ input[type=text]{width:100%;background:var(--navy);border:3px solid var(--white)
 .place{font-size:22px}.place .num{font-size:20px;margin-left:8px}
 td.tl{text-align:left}
 .htag{flex:none;font-family:var(--px);font-size:8px;letter-spacing:0;background:var(--yellow);color:#241a00;border-radius:3px;padding:1px 3px;text-transform:uppercase}   /* never clipped (user): the name gives way, not the tag */
-.avgtabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:6px}
+.avgtabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:6px}
 .avg{padding:6px 10px}.avg table{font-size:12px}.avg td{padding:1px 6px}.avg .fine{font-family:var(--numf);font-size:11px;margin-top:4px;color:#ffe0d2}
 .trow{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .ldr{display:grid;gap:8px}.ldr .panel{padding:6px 8px;min-width:0}.ldr table{font-size:12px}.ldr td{padding:1px 4px}.ldr td.tl{max-width:0;width:100%;overflow:hidden}
@@ -514,13 +514,12 @@ const EVENTS = [
   { key:'x100', name:'4x100', leg:100, fly:.6, cost:30, x:2 },
   { key:'x200', name:'4x200', leg:200, fly:.5, cost:44, x:3 },
   { key:'x400', name:'4x400', leg:400, fly:.4, cost:62, x:4 },
-  // not a relay (user): ONE runner from each team runs 1600 m, four laps. solo: one leg, no baton, no handoffs.
-  { key:'m1600', name:'1600 m', leg:1600, fly:0, cost:90, x:6, solo:true },
 ];
-// high school meets are the first three; college and the Olympics add a fourth race, the 1600 m (user: it was a 4x800 at first)
-const EVS = () => G.level === 'hs' ? EVENTS.slice(0, 3) : EVENTS;
+// every level runs the same three relays (user: college had a 4x800, then a one-man 1600 m, then neither)
+const EVS = () => EVENTS;
 const DISTS = () => EVS().map(e => e.leg);
 const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet points for places 1-6 in each relay
+const POINTS8 = [10, 8, 6, 5, 4, 3, 2, 1];                            // an eight-lane national final scores eight places, as real meets do (user)
 const YEARS = ['FR', 'SO', 'JR', 'SR'];
 // There is no Easy / Steady / All out any more (user): every runner on every team runs all out every time, so what a
 // leg costs is fixed (the costs above are an all-out leg) and stamina comes down to Endurance and Recovery.
@@ -541,29 +540,39 @@ const HS = [
 const HS_AWAY = [['Bayside', 'BAY', '#12a3a3', '#1f2a44'], ['St. Mark\'s', 'STM', '#7a4bd1', '#f2f2f4'], ['Hillcrest', 'HIL', '#d9453b', '#101418'], ['Summit', 'SUM', '#2f6fe0', '#ffd23f'], ['Redwood', 'RED', '#8a1c1c', '#e8d8b0'],
   ['Kennedy', 'KEN', '#0b2545', '#8fd3f4'], ['Mountain View', 'MTV', '#3a5a40', '#f2f2f4'], ['Carver', 'CAR', '#f2c230', '#101418'], ['Trinity', 'TRI', '#5aa9e6', '#0b1f3a'], ['Lakeshore', 'LAK', '#17348a', '#e0584b'],
   ['Desert Ridge', 'DES', '#c46a2b', '#3a2618'], ['Booker T.', 'BTW', '#111111', '#e0a800'], ['Roosevelt', 'ROO', '#0e7a3b', '#f2c230'], ['Glenbrook', 'GLE', '#b0304f', '#f2f2f4'], ['Sacred Heart', 'SAC', '#a00020', '#c9ccd6']];
-// colleges: [name, short, singlet, shorts, tier, can hire you]. Division 2 is tier 0; Division 1 runs tier 1 (smallest) to 5.
-// Half of each division can never hire you (user), so some programs are only ever opponents.
+/* Colleges (user): three real conferences in each division, ten real teams in each, ranked about as their track programs
+   really are. You race your own conference all season; the top six run the conference championship; the national final
+   is eight lanes: the three that came through your conference meet and the five strongest from the other two.
+   [name, short, singlet, shorts, tier, can hire you, conference, level]. Division 2 is tier 0 and carries its level
+   (72 the best in a conference down to 63); Division 1 runs tier 5 (the powers) down to tier 1 (the jobs you can get
+   first), and its level comes from the tier. Only some programs will ever hire you (user): one at each tier in every
+   Division 1 conference, three in every Division 2 conference. */
 const D2 = [
-  ['West Texas A&M', 'WT', '#6a1b2a', '#f2f2f4', 0, 1], ['Grand Valley State', 'GVSU', '#0065a4', '#101418', 0, 1], ['Adams State', 'ADAM', '#0e7a3b', '#101418', 0, 1],
-  ['Pittsburg State', 'PITT', '#b3202a', '#f2c230', 0, 1], ['Tiffin', 'TIFF', '#1b4d3e', '#e0a800', 0, 1],
-  ['Saint Augustine\'s', 'SAU', '#1f3a8a', '#f2f2f4', 0, 0], ['Angelo State', 'ANG', '#1b2a6b', '#e0a800', 0, 0], ['Ashland', 'ASH', '#5b2a86', '#f2c230', 0, 0],
-  ['Lincoln (MO)', 'LUMO', '#0b1f3a', '#f2f2f4', 0, 0], ['Academy of Art', 'ART', '#c8102e', '#101418', 0, 0],
+  ['West Texas A&M', 'WT', '#6a1b2a', '#f2f2f4', 0, 1, 'Lone Star', 72], ['Angelo State', 'ANG', '#1b2a6b', '#e0a800', 0, 0, 'Lone Star', 71], ['Texas A&M-Kingsville', 'TAMUK', '#00529b', '#ffc20e', 0, 0, 'Lone Star', 70],
+  ['Lubbock Christian', 'LCU', '#003da5', '#c8102e', 0, 1, 'Lone Star', 69], ['UT Tyler', 'UTT', '#002f6c', '#ff7900', 0, 0, 'Lone Star', 68], ['Eastern New Mexico', 'ENMU', '#00694e', '#a7a8aa', 0, 0, 'Lone Star', 67],
+  ['Oklahoma Christian', 'OC', '#7a0019', '#f2f2f4', 0, 0, 'Lone Star', 66], ['Midwestern State', 'MWSU', '#660000', '#ffc82e', 0, 1, 'Lone Star', 65], ['UT Permian Basin', 'UTPB', '#f26522', '#101418', 0, 0, 'Lone Star', 64], ['Western New Mexico', 'WNMU', '#4b2e83', '#ffc72c', 0, 0, 'Lone Star', 63],
+  ['Grand Valley State', 'GVSU', '#0065a4', '#101418', 0, 1, 'GLIAC', 72], ['Saginaw Valley State', 'SVSU', '#c8102e', '#003da5', 0, 0, 'GLIAC', 71], ['Ferris State', 'FERR', '#ba0c2f', '#ffd200', 0, 0, 'GLIAC', 70],
+  ['Wayne State', 'WSU', '#0c5449', '#ffcc33', 0, 1, 'GLIAC', 69], ['Davenport', 'DAV', '#c8102e', '#101418', 0, 0, 'GLIAC', 68], ['Northern Michigan', 'NMU', '#095339', '#ffc425', 0, 0, 'GLIAC', 67],
+  ['Michigan Tech', 'MTU', '#101418', '#ffcd00', 0, 0, 'GLIAC', 66], ['Wisconsin-Parkside', 'UWP', '#00573d', '#f2f2f4', 0, 1, 'GLIAC', 65], ['Lake Superior State', 'LSSU', '#003f87', '#ffc61e', 0, 0, 'GLIAC', 64], ['Purdue Northwest', 'PNW', '#101418', '#cfb991', 0, 0, 'GLIAC', 63],
+  ['Pittsburg State', 'PITT', '#b3202a', '#f2c230', 0, 1, 'MIAA', 72], ['Missouri Southern', 'MSSU', '#00693e', '#ffc72c', 0, 0, 'MIAA', 71], ['Central Missouri', 'UCM', '#cf202e', '#101418', 0, 0, 'MIAA', 70],
+  ['Lincoln (MO)', 'LUMO', '#0b1f3a', '#f2f2f4', 0, 1, 'MIAA', 69], ['Northwest Missouri State', 'NWMS', '#006a4e', '#f2f2f4', 0, 0, 'MIAA', 68], ['Emporia State', 'ESU', '#101418', '#ffc72c', 0, 0, 'MIAA', 67],
+  ['Fort Hays State', 'FHSU', '#101418', '#ffc82e', 0, 0, 'MIAA', 66], ['Nebraska-Kearney', 'UNK', '#003594', '#ffc72c', 0, 1, 'MIAA', 65], ['Washburn', 'WU', '#002d62', '#f2f2f4', 0, 0, 'MIAA', 64], ['Central Oklahoma', 'UCO', '#003366', '#ffc72c', 0, 0, 'MIAA', 63],
 ];
 const D1 = [
-  ['Georgia', 'UGA', '#ba0c2f', '#101418', 5, 1], ['Notre Dame', 'ND', '#c99700', '#0c2340', 5, 1], ['LSU', 'LSU', '#461d7c', '#fdd023', 5, 1],
-  ['Florida', 'UF', '#fa4616', '#0021a5', 5, 0], ['Texas', 'TEX', '#bf5700', '#f2f2f4', 5, 0], ['Texas A&M', 'TAMU', '#500000', '#f2f2f4', 5, 0],
-  ['USC', 'USC', '#990000', '#ffc72c', 4, 1], ['Oregon', 'ORE', '#154733', '#fee123', 4, 1], ['Tennessee', 'TENN', '#ff8200', '#f2f2f4', 4, 1],
-  ['Arkansas', 'ARK', '#9d2235', '#f2f2f4', 4, 0], ['Alabama', 'BAMA', '#9e1b32', '#f2f2f4', 4, 0], ['Florida State', 'FSU', '#782f40', '#ceb888', 4, 0],
-  ['Texas Tech', 'TTU', '#cc0000', '#101418', 3, 1], ['Kentucky', 'UK', '#0033a0', '#f2f2f4', 3, 1], ['Ohio State', 'OSU', '#bb0000', '#666666', 3, 1],
-  ['Houston', 'HOU', '#c8102e', '#f2f2f4', 3, 0], ['Clemson', 'CLEM', '#f56600', '#522d80', 3, 0], ['Baylor', 'BAY', '#154734', '#ffb81c', 3, 0],
-  ['Michigan', 'MICH', '#ffcb05', '#00274c', 2, 1], ['North Carolina A&T', 'NCAT', '#004684', '#fdb927', 2, 1], ['Iowa', 'IOWA', '#101418', '#ffcd00', 2, 1],
-  ['Stanford', 'STAN', '#8c1515', '#f2f2f4', 2, 0], ['Penn State', 'PSU', '#041e42', '#f2f2f4', 2, 0], ['Minnesota', 'MINN', '#7a0019', '#ffcc33', 2, 0],
-  ['Central Connecticut State', 'CCSU', '#1b4f9c', '#f2f2f4', 1, 1], ['Wagner', 'WAG', '#00483a', '#f2f2f4', 1, 1], ['Maine', 'MAINE', '#003263', '#b0d7ff', 1, 1],
-  ['Monmouth', 'MONM', '#041e42', '#c9ccd6', 1, 0], ['Albany', 'ALB', '#46166b', '#eeb211', 1, 0], ['Rider', 'RID', '#981e32', '#f2f2f4', 1, 0],
+  ['Georgia', 'UGA', '#ba0c2f', '#101418', 5, 1, 'SEC'], ['LSU', 'LSU', '#461d7c', '#fdd023', 5, 0, 'SEC'], ['Florida', 'UF', '#fa4616', '#0021a5', 5, 0, 'SEC'], ['Texas A&M', 'TAMU', '#500000', '#f2f2f4', 4, 1, 'SEC'], ['Arkansas', 'ARK', '#9d2235', '#f2f2f4', 4, 0, 'SEC'],
+  ['Alabama', 'BAMA', '#9e1b32', '#f2f2f4', 3, 0, 'SEC'], ['Tennessee', 'TENN', '#ff8200', '#f2f2f4', 3, 1, 'SEC'], ['Kentucky', 'UK', '#0033a0', '#f2f2f4', 2, 1, 'SEC'], ['Mississippi State', 'MSST', '#660000', '#f2f2f4', 2, 0, 'SEC'], ['Vanderbilt', 'VAN', '#101418', '#cfae70', 1, 1, 'SEC'],
+  ['Notre Dame', 'ND', '#c99700', '#0c2340', 5, 1, 'ACC'], ['Florida State', 'FSU', '#782f40', '#ceb888', 5, 0, 'ACC'], ['Clemson', 'CLEM', '#f56600', '#522d80', 4, 1, 'ACC'], ['Miami', 'MIA', '#f47321', '#005030', 4, 0, 'ACC'], ['Virginia Tech', 'VT', '#861f41', '#e87722', 3, 1, 'ACC'],
+  ['North Carolina', 'UNC', '#7bafd4', '#13294b', 3, 0, 'ACC'], ['Stanford', 'STAN', '#8c1515', '#f2f2f4', 2, 0, 'ACC'], ['Duke', 'DUKE', '#003087', '#f2f2f4', 2, 1, 'ACC'], ['Syracuse', 'SYR', '#f76900', '#0c2340', 1, 0, 'ACC'], ['Wake Forest', 'WAKE', '#101418', '#9e7e38', 1, 1, 'ACC'],
+  ['USC', 'USC', '#990000', '#ffc72c', 5, 0, 'Big Ten'], ['Oregon', 'ORE', '#154733', '#fee123', 5, 1, 'Big Ten'], ['Ohio State', 'OSU', '#bb0000', '#666666', 4, 1, 'Big Ten'], ['Penn State', 'PSU', '#041e42', '#f2f2f4', 3, 0, 'Big Ten'], ['Iowa', 'IOWA', '#101418', '#ffcd00', 3, 1, 'Big Ten'],
+  ['Nebraska', 'NEB', '#e41c38', '#f2f2f4', 3, 0, 'Big Ten'], ['Michigan', 'MICH', '#ffcb05', '#00274c', 2, 1, 'Big Ten'], ['Minnesota', 'MINN', '#7a0019', '#ffcc33', 2, 0, 'Big Ten'], ['Illinois', 'ILL', '#e84a27', '#13294b', 1, 0, 'Big Ten'], ['Rutgers', 'RUT', '#cc0033', '#f2f2f4', 1, 1, 'Big Ten'],
 ];
+const rowsOf = level => level === 'd2' ? D2 : D1;
+const rowLevel = (r, level) => level === 'd2' ? r[7] : LEVELS.d1.tier[r[4]];   // how good a college is
+// your conference: the school's own, or (a school from before the conferences) the first one in its division
+const confOf = () => G.school.conf || (G.school.conf = (rowsOf(G.level).find(r => r[1] === G.school.abbr) || rowsOf(G.level)[0])[6]);
 const NATIONS = [['United States', 'USA', '#0a3161', '#b31942'], ['Jamaica', 'JAM', '#fed100', '#009b3a'], ['Great Britain', 'GBR', '#f2f2f4', '#012169'], ['Japan', 'JPN', '#f2f2f4', '#bc002d'],
   ['Canada', 'CAN', '#d52b1e', '#f2f2f4'], ['Italy', 'ITA', '#0066cc', '#f2f2f4'], ['South Africa', 'RSA', '#007a4d', '#ffb612'], ['China', 'CHN', '#de2910', '#ffde00']];
-const school = (row, kind) => ({ name:row[0], abbr:row[1], c1:row[2], c2:row[3], tier:row[4] ?? 0, hire:!!row[5], kind });
+const school = (row, kind) => ({ name:row[0], abbr:row[1], c1:row[2], c2:row[3], tier:row[4] ?? 0, hire:!!row[5], kind, conf:row[6], lvl:row[7] });
 
 /* ---- how fast a team is: its level is the average Speed rating of its runners (0-99) ----
    Ratings turn into times by pace(), below, so (user's benchmarks) an average high school runner
@@ -582,17 +591,17 @@ const CAP = { hs:74, d2:82, d1:90, usa:97 };
    missing the championship meets, up about 1.6 for each round you get through, never below where the school started and
    never more than PROG_UP above it (winning does not turn a small college into a powerhouse: you move up by taking jobs). */
 const PROG_UP = { hs:24, d2:8, d1:5 };
-/* Times (user): a runner with 100 Speed and 100 Endurance, the most anyone can have, runs 9.40 / 18.80 / 42.50, and 3:38.00 for the 1600.
+/* Times (user): a runner with 100 Speed and 100 Endurance, the most anyone can have, runs 9.40 / 18.80 / 42.50.
    Every point under 100 makes him a true PERCENTAGE slower (user: "1% of 12 secs is more than 1% of 10"), so an upgrade
    takes the same share off whatever he runs now; RATES is that share per point, as a fraction:
-       Speed      100: 0.24%   200: 0.18%   400: 0.12%   1600: none
-       Endurance  100: 0.12%   200: 0.18%   400: 0.24%   1600: 0.36%
+       Speed      100: 0.24%   200: 0.18%   400: 0.12%
+       Endurance  100: 0.12%   200: 0.18%   400: 0.24%
    One steps down by 0.06 a distance and the other steps up by 0.06, and the two always add up to 0.36 (user: they
    should be the same pattern in reverse).
    which still lands on the benchmarks: at 34 / 34 (an average high school runner) 11.92 / 23.84 / 53.9, at 61 (state
-   level) 10.82 for the 100, at 80 (college elite) 10.10, and about 4:03 for the 1600 at 70. */
-const BEST = { 100:9.4, 200:18.8, 400:42.5, 1600:218 };              // the 1600: 3:38.00 for the 100 / 100 runner, about 4:03 at 70
-const RATES = { 100:[.0024, .0012], 200:[.0018, .0018], 400:[.0012, .0024], 1600:[0, .0036] };   // the 1600 is all Endurance (user: "you have to have 1 good endurance runner")
+   level) 10.82 for the 100, at 80 (college elite) 10.10. */
+const BEST = { 100:9.4, 200:18.8, 400:42.5};
+const RATES = { 100:[.0024, .0012], 200:[.0018, .0018], 400:[.0012, .0024]};
 const rated = (r, d) => BEST[d] * Math.exp(RATES[d][0] * (100 - r.spd) + RATES[d][1] * (100 - r.end));
 const t100 = r => rated(r, 100), t200 = r => rated(r, 200), t400 = r => rated(r, 400);
 const pbOf = (r, leg) => rated(r, leg);
@@ -606,7 +615,7 @@ const RATE = ['spd', 'end', 'hunt', 'rec'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', hunt:'Hunt', rec:'Recovery' };
 // what one upgrade does, in 40 characters or fewer, as percentages only (user: quick numbers, no examples)
 const RATE_DESC = { get spd(){ return '100 +.24% 200 +.18% 400 +.12%' + ''; },
-  get end(){ return '100 +.12% 200 +.18% 400 +.24%' + (G.level === 'hs' ? '' : ' 1600 +.36%'); },
+  get end(){ return '100 +.12% 200 +.18% 400 +.24%' + ''; },
   hunt:'+0.1% speed when not leading, over 50',
   rec:'+0.5% energy back after each race' };
 const capOf = k => 100;
@@ -633,7 +642,7 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
             energy, 2% off at 70, 5% at 50, 10% at 30, 20% at empty. A fresh man runs exactly his rated time.
           x the day: anywhere from 1% quicker to 1% slower, evenly (user)
           and, if the team is not in the lead when he gets the baton, less his Hunt boost.
-   It costs him energy: 30 / 44 / 62 / 90 for the 100 / 200 / 400 / 1600, less with good Endurance, and he gets half
+   It costs him energy: 30 / 44 / 62 for the 100 / 200 / 400, less with good Endurance, and he gets half
    his Recovery back between races. (Raised from 26 / 38 / 56 / 75 at the user's request so that Recovery matters in
    every relay: an average high schooler now starts his 200 on about 85 and his 400 on about 54.) */
 const TIRE = .00002;
@@ -712,7 +721,7 @@ function simRun(S, T){
 // the finished race: each team's splits (from getting the baton to passing it; the first from the gun) and total, fastest first
 function simResult(S){
   const out = S.teams.map(tm => ({ ti:tm.ti, total:tm.H[tm.legs.length], legs:tm.legs.map((l, i) => ({ id:l.id, name:l.name, t:tm.H[i + 1] - (i ? tm.H[i] : 0), before:l.before, after:l.after, tap:l.tap, early:l.early, behind:l.behind && l.hunt > 0 })) }));
-  out.sort((a, b) => a.total - b.total).forEach((o, k) => { o.place = k + 1; o.pts = POINTS[k]; });
+  out.sort((a, b) => a.total - b.total).forEach((o, k) => { o.place = k + 1; o.pts = (out.length > 6 ? POINTS8 : POINTS)[k]; });
   return out;
 }
 function runEvent(meet, ev){ const S = simNew(meet, ev); simRun(S, Infinity); return simResult(S); }
@@ -728,18 +737,14 @@ function buildLeague(){
   const sc = G.school, L = G.level;
   let others;
   if (L === 'hs') others = HS.filter(r => r[1] !== sc.abbr).map(r => mkTeam(school(r, 'hs'), rnd(...LEVELS.hs.area)));
-  else if (L === 'd2') others = D2.filter(r => r[1] !== sc.abbr).map(r => mkTeam(school(r, 'd2'), rnd(...LEVELS.d2.area)));
-  else {                                                              // a region of ten: two or so from each tier, re-drawn each season
-    const pool = shuffle(D1.filter(r => r[1] !== sc.abbr)); others = [];
-    for (let tier = 1; tier <= 5; tier++) others.push(...pool.filter(r => r[4] === tier).slice(0, 2));
-    others = others.slice(0, 9).map(r => mkTeam(school(r, 'd1'), LEVELS.d1.tier[r[4]] + rnd(-1.5, 1.5)));
-  }
+  else { const conf = confOf();                                        // college: the other nine in your conference, each about as good as it really is
+    others = rowsOf(L).filter(r => r[6] === conf && r[1] !== sc.abbr).slice(0, 9).map(r => mkTeam(school(r, L), rowLevel(r, L) + rnd(-1.2, 1.2))); }
   const mine = { ...sc, id:sc.abbr, user:true, roster:G.roster, base:0, pts:0, meets:0, best:{} };
   G.teams = [mine, ...others];
 }
 function newCareer(abbr){
   const sc = school(HS.find(r => r[1] === abbr), 'hs');
-  G = { v:3, level:'hs', school:sc, season:1, year:1, phase:'meets', meetNo:0, tp:0, prog:LEVELS.hs.you, prog0:LEVELS.hs.you, roster:squad(LEVELS.hs.you), history:[], records:{}, offers:[], meet:null, last:null, titles:0, gold:0 };
+  G = { v:4, level:'hs', school:sc, season:1, year:1, phase:'meets', meetNo:0, tp:0, prog:LEVELS.hs.you, prog0:LEVELS.hs.you, roster:squad(LEVELS.hs.you), history:[], records:{}, offers:[], meet:null, last:null, titles:0, gold:0 };
   buildLeague();
 }
 const STAGES = { hs:['District', 'State', 'Nationals'], d2:['Conference', 'D2 Nationals'], d1:['Conference', 'NCAA Championships'], usa:['Olympic Games'] };
@@ -750,7 +755,7 @@ const standings = () => [...G.teams].sort((a, b) => b.pts - a.pts || (a.best.x10
 const needWin = () => G.level === 'hs' && STAGES.hs[G.stage] === 'State';
 function nextMeetInfo(){
   if (G.phase === 'meets') return { kind:'meet', title:`Meet ${G.meetNo + 1} of ${MEETS}`, sub:'Top 3 in the standings after three meets go on' };
-  if (G.phase === 'stage') { const names = STAGES[G.level], last = G.stage === names.length - 1; return { kind:'stage', title:names[G.stage], sub:last ? (G.level === 'd1' ? 'Win it and the USA team is yours' : G.level === 'usa' ? 'One shot' : 'The last meet of the season') : needWin() ? 'Win it to go to Nationals' : 'Top 3 go on' }; }
+  if (G.phase === 'stage') { const names = STAGES[G.level], last = G.stage === names.length - 1; return { kind:'stage', title:names[G.stage] === 'Conference' ? `${confOf()} Championship` : names[G.stage], sub:last ? (G.level === 'd1' ? 'Win it and the USA team is yours' : G.level === 'usa' ? 'One shot' : 'The last meet of the season') : needWin() ? 'Win it to go to Nationals' : 'Top 3 go on' }; }
   return null;
 }
 function startMeet(){
@@ -766,15 +771,18 @@ function startMeet(){
       const rival = G.stage === 0 ? standings().filter(t => !t.user)[0] : null;      // district: the other team that came through your area
       opp = shuffle([...HS_AWAY]).slice(0, rival ? 4 : 5).map(r => mkTeam(school([...r.slice(0, 1).map(n => n + ' High'), ...r.slice(1)], 'hs'), rnd(...range)));
       if (rival) opp.unshift(rival);
-    } else {
-      const pool = (G.level === 'd2' ? D2 : D1).filter(r => r[1] !== G.school.abbr);
-      const strong = G.level === 'd1' ? pool.filter(r => r[4] >= (G.stage ? 4 : 3)) : pool;
-      opp = shuffle([...strong]).slice(0, 5).map(r => mkTeam(school(r, G.level), rnd(...range)));
+    } else if (G.stage === 0) opp = standings().filter(t => !t.user).slice(0, 5);          // the conference championship: the top six in the standings (user)
+    else {                                                              // the national final, eight lanes (user): the two that came through your conference meet with you, and the five strongest from the other two conferences
+      const L = G.level, conf = confOf(), mates = (G.confQual || []).map(id => G.teams.find(t => t.id === id)).filter(Boolean);
+      const far = rowsOf(L).filter(r => r[6] !== conf).sort((a, b) => rowLevel(b, L) - rowLevel(a, L)).slice(0, 7 - mates.length);
+      opp = [...mates, ...far.map(r => mkTeam(school(r, L), rowLevel(r, L) + rnd(0, 1.5)))];
     }
     field = [me(), ...opp];
   }
-  const lanes = shuffle([0, 1, 2, 3, 4, 5]);
-  G.meet = { title, big, ev:0, done:[], teams:field.map((t, k) => ({ id:t.id, name:t.name, abbr:t.abbr, c1:t.c1, c2:t.c2, user:!!t.user, roster:t.roster, energy:{}, lineup:null, pts:0, lane:lanes[k] })) };
+  const lanes = shuffle(field.map((_, k) => k));
+  // the track (user): District and the conference meets are green, State and the Olympics blue, every national final black
+  const surf = !big ? 'clay' : G.level === 'usa' ? 'State' : G.level === 'hs' ? STAGES.hs[G.stage] : G.stage === 0 ? 'District' : 'Nationals';
+  G.meet = { title, big, surf, ev:0, done:[], teams:field.map((t, k) => ({ id:t.id, name:t.name, abbr:t.abbr, c1:t.c1, c2:t.c2, user:!!t.user, roster:t.roster, energy:{}, lineup:null, pts:0, lane:lanes[k] })) };
   G.meet.teams.forEach(t => t.roster.forEach(r => { t.energy[r.id] = 100; }));
   G.lineup = null;
 }
@@ -792,7 +800,7 @@ function bookRace(res){
   res.forEach(o => o.legs.forEach(l => { M.teams[o.ti].energy[l.id] = l.after; }));
   res.forEach(o => { M.teams[o.ti].pts += o.pts; });
   const mine = res.find(o => M.teams[o.ti].user);
-  mine.tp = (RACE_TP[mine.place - 1] || 0) * (M.big ? 2 : 1); G.tp += mine.tp;
+  mine.tp = RACE_TP[Math.min(mine.place, 6) - 1] * (M.big ? 2 : 1); G.tp += mine.tp;                // 7th and 8th in an eight-lane final are paid as 6th
   // personal bests: the fastest split each of your runners has actually run at this distance (user)
   for (const l of mine.legs) { const r = G.roster.find(x => x.id === l.id); if (!r) continue; r.pb ||= {}; if (!r.pb[ev.leg] || l.t < r.pb[ev.leg]) { l.pb = true; r.pb[ev.leg] = l.t; } }
   // bests: the team's season best in each relay and your program records
@@ -812,7 +820,7 @@ function afterEvent(){
 function finishMeet(){
   const M = G.meet, last = M.done[M.done.length - 1].res;
   const order = [...M.teams].sort((a, b) => b.pts - a.pts || last.find(o => M.teams[o.ti] === a).place - last.find(o => M.teams[o.ti] === b).place);
-  const place = order.findIndex(t => t.user) + 1, tp = (MEET_TP[place - 1] || 0) * (M.big ? 2 : 1);
+  const place = order.findIndex(t => t.user) + 1, tp = MEET_TP[Math.min(place, 6) - 1] * (M.big ? 2 : 1);
   G.tp += tp;
   const sum = { title:M.title, place, tp, order:order.map(t => ({ abbr:t.abbr, name:t.name, c1:t.c1, c2:t.c2, user:t.user, pts:t.pts })), times:M.done.map(d => d.res.find(o => M.teams[o.ti].user).total), big:M.big };
   if (!M.big) {                                                       // a regular meet: season points for everyone who ran, the rest of the area has its own meet
@@ -832,7 +840,7 @@ function finishMeet(){
       const champ = place === 1;
       if (G.level === 'usa') { if (champ) G.gold++; sum.next = champ ? 'Olympic champions. That is the top of the sport.' : `${ordinal(place)} at the Olympics. One shot, and it's gone: back to a college job.`; endSeason(champ ? 'Olympic champions' : `${ordinal(place)} at the Olympics`, champ ? 9 : 5); }
       else { if (champ) G.titles++; sum.next = champ ? `${names[G.stage]} champions!` : `${ordinal(place)} at ${names[G.stage]}.`; endSeason(champ ? `${names[G.stage]} champions` : `${ordinal(place)} at ${names[G.stage]}`, champ ? 4 + G.stage : place <= 3 ? 3 + G.stage : 2 + G.stage); }
-    } else if (place <= (needWin() ? 1 : 3)) { G.stage++; const q = qualTP(G.stage); G.tp += q; sum.next = `${ordinal(place)} at ${names[G.stage - 1]}: on to ${names[G.stage]}. +${q} TP for qualifying.`; }
+    } else if (place <= (needWin() ? 1 : 3)) { if (G.level !== 'hs') G.confQual = order.slice(0, 3).filter(t => !t.user).map(t => t.id); G.stage++; const q = qualTP(G.stage); G.tp += q; sum.next = `${ordinal(place)} at ${names[G.stage - 1]}: on to ${names[G.stage]}. +${q} TP for qualifying.`; }
     else { sum.next = `${ordinal(place)} at ${names[G.stage]}. ${needWin() ? 'Only the State champions go to Nationals.' : 'Only the top three go on.'}`; endSeason(`${ordinal(place)} at ${names[G.stage]}`, 1 + G.stage); }
   }
   G.last = sum; G.meet = null; G.lineup = null;
@@ -878,7 +886,7 @@ function endSeason(finish, reach){
 // take a job: a new school, its runners, a new region. You never go back down a level.
 function takeJob(sc){
   G.school = sc; G.level = sc.kind; G.stateWon = false;
-  G.prog = G.prog0 = sc.kind === 'd2' ? rnd(64, 69) : LEVELS.d1.tier[sc.tier] + rnd(-1, 1);
+  G.prog = G.prog0 = (sc.kind === 'd2' ? sc.lvl || 67 : LEVELS.d1.tier[sc.tier]) + rnd(-1, 1);
   G.roster = squad(G.prog);
   G.offers = []; G.newJob = true;
 }
@@ -947,16 +955,30 @@ function upgradeRunner(r){
   r.tr = { spd:tr.spd || 0, end:tr.end || 0, hunt:tr.acc || 0, rec:tr.hnd || 0 };
   delete r.acc; delete r.hnd; delete r.lv;
 }
+// v3 -> v4: college careers move into their real conference (the other nine teams are new, with season points to match
+// the meets already run, and yours kept); a meet that was under way starts again. High school careers only lose a 1600.
+function migrate4(g){
+  g.v = 4;
+  if (g.meet && (g.meet.ev >= EVENTS.length || g.level === 'd1' || g.level === 'd2')) { g.meet = null; g.lineup = null; }
+  if (g.level !== 'd1' && g.level !== 'd2') return;
+  const keep = G; G = g;
+  try { const old = (g.teams || []).find(t => t.user); buildLeague(); const mine = g.teams.find(t => t.user); if (old) { mine.pts = old.pts; mine.meets = old.meets; mine.best = old.best || {}; }
+    const mean = avg(g.teams.filter(t => !t.user).map(t => t.base));
+    g.teams.forEach(t => { if (!t.user) { t.meets = g.meetNo || 0; for (let k = 0; k < t.meets; k++) t.pts += Math.round(clamp(15 + (t.base - mean) * 1.1 + rnd(-5, 5), 4, 28)); } });
+    if (g.phase === 'stage' && g.stage > 0) g.confQual = standings().filter(t => !t.user).slice(0, 2).map(t => t.id);
+  } finally { G = keep; }
+}
 function migrate(g){
-  if ((g.v || 1) >= 3) return;
+  if (g.v === 3) return migrate4(g);
+  if ((g.v || 1) >= 4) return;
   const lists = [g.roster, ...(g.teams || []).map(t => t.roster), g.off && g.off.class, g.off && g.off.signed, g.college && g.college.roster].filter(Boolean);
-  if (g.v === 2) { lists.forEach(l => l.forEach(r => { if (r.b) { for (const k of ['spd', 'end']) r[k] = clamp(r[k] + Math.max(0, r[k] - r.b[k]), 1, 100); delete r.b; } })); g.v = 3; return; }
+  if (g.v === 2) { lists.forEach(l => l.forEach(r => { if (r.b) { for (const k of ['spd', 'end']) r[k] = clamp(r[k] + Math.max(0, r[k] - r.b[k]), 1, 100); delete r.b; } })); g.v = 3; return migrate4(g); }
   lists.forEach(l => l.forEach(upgradeRunner));
   const best = l => [...l].sort((a, b) => t100(a) + t200(a) / 2 + t400(a) / 4 - (t100(b) + t200(b) / 2 + t400(b) / 4)).slice(0, SQUAD);
   g.roster = best(g.roster); (g.teams || []).forEach(t => { t.roster = t.user ? g.roster : best(t.roster); });
   if (g.college) g.college.roster = best(g.college.roster);
   if (g.off && g.off.picks) { g.off.picks = Math.min(g.off.picks, g.roster.filter(r => r.year >= 3).length || 1); g.off.sel = []; g.off.signed = []; }
-  g.meet = null; g.lineup = null; g.v = 3;
+  g.meet = null; g.lineup = null; g.v = 3; migrate4(g);
 }
 
 /* ============================ saving ============================ */
@@ -1046,13 +1068,13 @@ function createHTML(){
   const list = HS.map(r => { const t = school(r, 'hs'); return `<button class="tpick ${pickedTeam === t.abbr ? 'on' : ''}" data-a="pickTeam" data-t="${t.abbr}">${badge(t, 'sm')}<div class="tn"><b>${esc(t.name)}</b></div></button>`; }).join('');
   return `<div class="bar"><button class="btn sm" data-a="slots">Back</button><div class="title">Pick your high school</div><span></span></div>
     <div class="panel"><div class="tgrid five">${list}</div></div>
-    <div class="row between" style="margin-top:10px"><div class="muted intro" style="font-size:13px">You coach four runners through the 4x100, 4x200 and 4x400 (and a one-man 1600 m in college), and you call every start and handoff. Win State and the colleges start calling.</div>
+    <div class="row between" style="margin-top:10px"><div class="muted intro" style="font-size:13px">You coach four runners through the 4x100, 4x200 and 4x400 , and you call every start and handoff. Win State and the colleges start calling.</div>
     <button class="btn go" data-a="create" ${pickedTeam ? '' : 'disabled'}>Start career</button></div>`;
 }
 function hubHTML(){
   const info = nextMeetInfo(), T = me(), st = standings(), rank = st.findIndex(t => t.user) + 1, usa = G.level === 'usa';
   const where = usa ? 'Six nations, three relays, one shot.' : G.phase === 'meets' ? `${ordinal(rank)} of ${st.length} in the standings, ${T.pts} pts` : `Qualified ${ordinal(rank)} from the regular season`;
-  return topBar(esc(G.school.name), `<div class="box">${LEVEL_NAME[G.level]}</div>`) + `<div class="hub">
+  return topBar(esc(G.school.name), `<div class="box">${G.level === 'd1' || G.level === 'd2' ? `${G.level.toUpperCase()} ${esc(confOf())}` : LEVEL_NAME[G.level]}</div>`) + `<div class="hub">
     <div class="panel"><div class="label">Season ${G.season}</div>
       <div class="px" style="font-size:20px;margin:4px 0 2px">${info.title}</div>
       <div class="muted" style="font-size:13px">${info.sub}</div>
@@ -1102,9 +1124,9 @@ function tableHTML(){
    (they tap like the teams you race, and tire through the meet as you do), so they move as the game's numbers do. */
 const AVG_ROWS = [
   ['HS meets', 'hs:m', () => rnd(...LEVELS.hs.area), 3], ['HS District', 'hs:0', () => rnd(...LEVELS.hs.stage[0]), 3], ['HS State', 'hs:1', () => rnd(...LEVELS.hs.stage[1]), 3], ['HS Nationals', 'hs:2', () => rnd(...LEVELS.hs.stage[2]), 3],
-  ['D2 meets', 'd2:m', () => rnd(...LEVELS.d2.area), 4], ['D2 Conference', 'd2:0', () => rnd(...LEVELS.d2.stage[0]), 4], ['D2 Nationals', 'd2:1', () => rnd(...LEVELS.d2.stage[1]), 4],
-  ['D1 meets', 'd1:m', () => pick(LEVELS.d1.tier.slice(1)) + rnd(-1.5, 1.5), 4], ['D1 Conference', 'd1:0', () => rnd(...LEVELS.d1.stage[0]), 4], ['NCAA Championships', 'd1:1', () => rnd(...LEVELS.d1.stage[1]), 4],
-  ['Olympics', 'usa:0', () => rnd(...LEVELS.usa.field), 4]];
+  ['D2 meets', 'd2:m', () => rnd(...LEVELS.d2.area), 3], ['D2 Conference', 'd2:0', () => rnd(...LEVELS.d2.stage[0]), 3], ['D2 Nationals', 'd2:1', () => rnd(...LEVELS.d2.stage[1]), 3],
+  ['D1 meets', 'd1:m', () => pick(LEVELS.d1.tier.slice(1)) + rnd(-1.5, 1.5), 3], ['D1 Conference', 'd1:0', () => rnd(...LEVELS.d1.stage[0]), 3], ['NCAA Championships', 'd1:1', () => rnd(...LEVELS.d1.stage[1]), 3],
+  ['Olympics', 'usa:0', () => rnd(...LEVELS.usa.field), 3]];
 let AVG = null;
 function averages(){
   if (AVG) return AVG;
@@ -1123,7 +1145,7 @@ function averagesHTML(){
   const mine = T && T.best[ev.key] ? fmt(T.best[ev.key]) : '-';
   return topBar('Averages', `<button class="btn sm" data-a="go" data-s="table">Standings</button>${backBtn}`) + `<div class="avgtabs">${tabs}</div>
     <div class="panel avg"><table><tr><th style="text-align:left">${ev.name}</th><th>Average</th><th>3rd place</th><th>Winner</th></tr>${rows}</table>
-    <div class="fine">Your best ${ev.name} this season: <b class="yellow num">${mine}</b>${ev.solo ? '. Run from college up.' : ''}</div></div>`;
+    <div class="fine">Your best ${ev.name} this season: <b class="yellow num">${mine}</b></div></div>`;
 }
 function recordsHTML(){
   const T = me();
@@ -1188,7 +1210,7 @@ function postHTML(){
 function offHTML(){
   const O = G.off, usa = G.level === 'usa';
   if (O.step === 'offers') {
-    const list = G.offers.map(t => `<button class="tpick" data-a="offer" data-t="${t.abbr}">${badge(t, 'sm')}<div class="tn"><b>${esc(t.name)}</b><br>${t.kind === 'd2' ? 'Division 2' : 'Division 1, ' + ['', 'small program', 'mid-major', 'solid program', 'contender', 'powerhouse'][t.tier]}</div></button>`).join('');
+    const list = G.offers.map(t => `<button class="tpick" data-a="offer" data-t="${t.abbr}">${badge(t, 'sm')}<div class="tn"><b>${esc(t.name)}</b><br>${t.conf ? esc(t.conf) + ', ' : ''}${t.kind === 'd2' ? 'Division 2' : 'Division 1, ' + ['', 'small program', 'mid-major', 'solid program', 'contender', 'powerhouse'][t.tier]}</div></button>`).join('');
     return `<div class="bar"><span></span><div class="title">Job offers</div><button class="btn sm" data-a="stay">Stay at ${esc(G.school.abbr)}</button></div>
       <div class="panel"><div class="tgrid">${list}</div></div>
       <div class="muted fanote" style="font-size:13px;margin-top:8px">Take a job and you inherit that school's runners. ${G.level === 'hs' ? 'Once you leave for college you never coach high school again.' : ''}</div>`;
@@ -1373,7 +1395,7 @@ const pxText = (c, str, x, y, color, k = 1) => { c.fillStyle = color; [...str].f
    and up and down. */
 // Scale (user: runners must be under 3 m against the track): 6.6 pixels a metre, and a runner stands about 19 pixels,
 // so he is about 2.8 m tall; a lane is 9 pixels, about 1.4 m (a real one is 1.22 m).
-const CH = 180, SS = 4, LS = 660, RX0 = 210, RY0 = 210, LW = 9, LANES = 6, PAD = 16, STAND = 30;
+const CH = 180, SS = 4, LS = 660, RX0 = 210, RY0 = 210, LW = 9, LANES = 8, PAD = 16, STAND = 30;   // LANES: the most there can be (the national finals); the world is sized for it and a six-lane meet leaves the outside two as grass
 // The camera looks from the side of the home straight, tilted down (user: a side view like the other two games, not
 // straight down). The track itself is still laid out as it really is, with half-circle bends, and then everything
 // going away from the camera is squeezed by TILT. So a runner coming round the bend moves across the screen and only
@@ -1429,9 +1451,8 @@ function ovalPath(g, off){
 }
 // the track surface (user): clay everywhere, except District is forest green, State is blue and Nationals is black
 // [surface, the darker edge round it]
-const SURFACE = { clay:['#c9613f', '#8f3f25'], District:['#2f7350', '#1f4f37'], State:['#1f6fd0', '#164f96'], Nationals:['#232326', '#0d0d0f'] };
-const surfaceOf = meetTitle => SURFACE[Object.keys(SURFACE).find(k => new RegExp(k, 'i').test(meetTitle || '')) || 'clay'];
-function buildTrack(title, ev, surface = SURFACE.clay){
+const SURFACE = { clay:['#c9613f', '#8f3f25'], District:['#2f7350', '#1f4f37'], State:['#1f6fd0', '#164f96'], Nationals:['#232326', '#0d0d0f'] };   // green, blue, black: which meet gets which is decided in startMeet
+function buildTrack(title, ev, surface = SURFACE.clay, NL = 6){        // NL: lanes at this meet
   const c = document.createElement('canvas'); c.width = WORLD_W * SS; c.height = WORLD_H * SS;
   const g = c.getContext('2d'); g.scale(SS, SS);
   g.fillStyle = '#3f9b4b'; g.fillRect(0, 0, WORLD_W, WORLD_H);
@@ -1442,11 +1463,11 @@ function buildTrack(title, ev, surface = SURFACE.clay){
   for (let y = 3; y < 26; y += 4) for (let x = (y % 8 ? 1 : 3); x < WORLD_W; x += 4) if (Math.random() < .82) { g.fillStyle = pick(crowd); g.fillRect(x, y, 2, 2); }
   g.fillStyle = '#c9ccd6'; g.fillRect(0, 30, WORLD_W, 1);
   // the track: clay with white lane lines (user)
-  ovalPath(g, LANES * LW + 2); g.fillStyle = surface[1]; g.fill();
-  ovalPath(g, LANES * LW); g.fillStyle = surface[0]; g.fill();
+  ovalPath(g, NL * LW + 2); g.fillStyle = surface[1]; g.fill();
+  ovalPath(g, NL * LW); g.fillStyle = surface[0]; g.fill();
   ovalPath(g, -.35); g.fillStyle = '#4aa856'; g.fill();
   g.strokeStyle = '#ffffff'; g.lineWidth = 1; g.lineJoin = 'round';
-  for (let j = 0; j <= LANES; j++) { ovalPath(g, j * LW); g.stroke(); }
+  for (let j = 0; j <= NL; j++) { ovalPath(g, j * LW); g.stroke(); }
   g.save(); ovalPath(g, -.35); g.clip();
   for (let x = XL - RX0; x < XR + RX0; x += 40) { g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(x, CY - RY0 * TILT, 20, RY0 * 2 * TILT); }
   g.restore();
@@ -1454,19 +1475,19 @@ function buildTrack(title, ev, surface = SURFACE.clay){
   // a line across one lane
   const tick = (k, u, col, w) => { const p = lanePos(k - .5, u), q = lanePos(k + .5, u); g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(q.x, q.y); g.stroke(); };
   // the finish line, and each lane's staggered start line
-  g.fillStyle = '#ffffff'; g.fillRect(XR - 1, CY + RY0 * TILT, 2, (RYO - RY0) * TILT);
-  for (let y = 0; y < (RYO - RY0) * TILT; y += 2) { g.fillStyle = (y / 2) % 2 ? '#1d1d27' : '#ffffff'; g.fillRect(XR + 1, CY + RY0 * TILT + y, 1, 2); }
+  g.fillStyle = '#ffffff'; g.fillRect(XR - 1, CY + RY0 * TILT, 2, NL * LW * TILT);
+  for (let y = 0; y < NL * LW * TILT; y += 2) { g.fillStyle = (y / 2) % 2 ? '#1d1d27' : '#ffffff'; g.fillRect(XR + 1, CY + RY0 * TILT + y, 1, 2); }
   const ST = stagger(ev);
-  for (let k = 1; k < LANES; k++) tick(k, uOf(k, ST * k), '#ffffff', 1.75);
+  for (let k = 1; k < NL; k++) tick(k, uOf(k, ST * k), '#ffffff', 1.75);
   // the lane numbers, painted on the ground in each lane starting about 2 m past its start line (user: a line 8 m
   // into the curve has its number from about 10 m), 3 ft wide and 5 ft tall (6 x 10 px at 6.6 px a metre). Each one lies along its own
   // lane, top toward the way the runners go, so round the bend they all point a little differently; and they are
   // painted flat (squeezed by TILT like everything on the ground). 6 px across in a 9 px lane, so they always fit.
-  for (let k = 0; k < LANES; k++) { const u = uOf(k, ST * k + 2.76), p = lanePos(k, u), q = lanePos(k, u + .002), dir = Math.atan2((q.y - p.y) / TILT, q.x - p.x);
+  for (let k = 0; k < NL; k++) { const u = uOf(k, ST * k + 2.76), p = lanePos(k, u), q = lanePos(k, u + .002), dir = Math.atan2((q.y - p.y) / TILT, q.x - p.x);
     g.save(); g.translate(p.x, p.y); g.scale(1, TILT); g.rotate(dir + Math.PI / 2); pxText(g, String(k + 1), -3, -5, 'rgba(255,255,255,.92)', 2); g.restore(); }
   // the exchange zones: a yellow line where the next man waits and another 20 m on (the baton changes hands about 15 m in)
   for (let i = 1; i < (ev.solo ? 1 : 4); i++) { const m = i * ev.leg, lanes = ev.leg < 400 || m < 800;
-    for (let k = 0; k < LANES; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, ST * k + m + add) : uOf(0, m + add), '#ffd23f', 1.25); } }
+    for (let k = 0; k < NL; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, ST * k + m + add) : uOf(0, m + add), '#ffd23f', 1.25); } }
   return c;
 }
 function fit(){
@@ -1562,7 +1583,7 @@ function startRace(){
       kin:[], vE:[], tau:[], go:[], pos:(i, T) => tm.kin[i].p(T), ph:tm.legs.map(() => Math.random()), lx:tm.legs.map(() => null), xl:[0, 0, 0, 0] }); }   // xl: 4x400, every team hands off in lane 1 after laps 2 and 3 (user)
   R.mine = S.teams.find(t => t.user);
   S.onArrive = (tm, i) => legKin(S, tm, i);
-  trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY', ev, M.big ? surfaceOf(M.title) : SURFACE.clay);
+  trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY', ev, SURFACE[M.surf] || SURFACE.clay, M.teams.length > 6 ? 8 : 6);
   $('#evn').textContent = ev.name; $('#clk').textContent = '0.00'; $('#order').innerHTML = '';
   $('#game').hidden = false; fit();
   cam = null; lastT = performance.now();
