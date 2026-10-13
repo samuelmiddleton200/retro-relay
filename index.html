@@ -442,9 +442,9 @@ td.tl{text-align:left}
 .och i{width:8px;height:8px;border:1px solid #fff}
 .gbtn{top:auto;bottom:calc(8px + env(safe-area-inset-bottom) * .5)}
 /* what your next tap does, as words on the screen (user: not a button; a tap anywhere counts) */
-.tapmsg{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom) * .5);text-align:center;pointer-events:none;font-family:var(--px);font-size:16px;letter-spacing:.08em;color:#4db8ff;opacity:.6;text-shadow:2px 2px 0 #000}
-.tapmsg.armed{opacity:.9}
-.tapmsg.hot{opacity:1;font-size:30px;color:#4db8ff}
+.tapmsg{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom) * .5);text-align:center;pointer-events:none;font-family:var(--px);font-size:14px;letter-spacing:.08em;color:#fff;opacity:.85;text-shadow:2px 2px 0 #000}
+.banner.cue{font-size:44px;color:var(--yellow);animation:cueflash .24s steps(1) infinite}
+@keyframes cueflash{50%{opacity:.25}}
 @media (max-height:500px){
   .lu,.two{gap:8px}.rlist{gap:3px}.legs{gap:4px}
   .rrow{padding:3px 6px}
@@ -1654,16 +1654,20 @@ function update(dt){
     if (R.end === Infinity && S.teams.every(t => t.H[N] !== undefined)) { R.end = Math.max(...S.teams.map(t => t.H[N])); R.linger = Math.max(2.6, Math.max(...S.teams.map(t => t.vE[N - 1] || 0)) / DECEL / K + .8); }   // long enough to watch the last man slow to a stop
     if (R.T >= R.end) { R.over += dt; if (R.over > R.linger) return endRace(); }
   }
-  if (R.final) banner(...R.final);
-  else if (R.flash && R.real < R.flash.until) banner(R.flash.text, R.flash.small);
-  else if (R.real < R.setAt) banner('On your marks');
-  else if (R.real < R.gun) banner('Set');
-  else banner('');
-  // the tap button: what it will do next, awake when a tap would count, lit at the gun or the cue
+  // the cues are in the middle of the screen (user): Ready, Set, then GO! at the gun, and HANDOFF! flashing at each
+  // handoff cue, until you tap. The line at the bottom only says which word to tap on.
   const i = me.next; let label = '', cls = '';
   if (me.legs[0].tap === null) { label = 'Start'; cls = R.real >= R.gun ? 'hot' : R.real >= R.setAt ? 'armed' : ''; }
   else if (i >= 1 && i < N && me.legs[i].tap === null) { label = 'Handoff'; cls = R.T >= me.Z[i - 1] ? 'hot' : R.T >= me.Z[i - 1] - ARM * K ? 'armed' : ''; }
-  if (label + cls !== tapLabel) { tapLabel = label + cls; const b = $('#tapBtn'); b.hidden = !label; b.textContent = cls === 'hot' ? (label === 'Start' ? 'Go! Tap!' : 'Handoff! Tap!') : cls === 'armed' ? (label === 'Start' ? 'Tap at the gun' : 'Handoff coming: tap on the cue') : label === 'Start' ? 'Tap anywhere to start' : 'Tap anywhere to hand off'; b.className = 'tapmsg ' + cls; }
+  const cue = cls === 'hot' ? (label === 'Start' ? 'GO!' : 'HANDOFF!') : '';
+  $('#banner').classList.toggle('cue', !!cue && !R.final);
+  if (R.final) banner(...R.final);
+  else if (cue) banner(cue);
+  else if (R.flash && R.real < R.flash.until) banner(R.flash.text, R.flash.small);
+  else if (R.real < R.setAt) banner('Ready');
+  else if (R.real < R.gun) banner('Set');
+  else banner('');
+  if (label !== tapLabel) { tapLabel = label; const b = $('#tapBtn'); b.hidden = !label; b.textContent = label === 'Start' ? 'Tap on "GO!"' : 'Tap on "HANDOFF!"'; b.className = 'tapmsg'; }
   $('#clk').textContent = fmt(Math.min(R.T, R.end));
   if ((orderT -= dt) <= 0) { orderT = .2;
     // the race as it stands right now, by how far each baton has gone; level teams (and everyone before the gun) are in lane order
