@@ -740,13 +740,13 @@ function newCareer(abbr){
   buildLeague();
 }
 const STAGES = { hs:['District', 'State', 'Nationals'], d2:['Conference', 'D2 Nationals'], d1:['Conference', 'NCAA Championships'], usa:['Olympic Games'] };
-const MEETS = 5;
+const MEETS = 3;                                                      // regular-season meets before the standings decide who goes on (user: 3, was 5)
 const standings = () => [...G.teams].sort((a, b) => b.pts - a.pts || (a.best.x100 || 99) - (b.best.x100 || 99));
 // who is in the next meet
 // high school State: only the winner goes on to Nationals (user); everywhere else the top three do
 const needWin = () => G.level === 'hs' && STAGES.hs[G.stage] === 'State';
 function nextMeetInfo(){
-  if (G.phase === 'meets') return { kind:'meet', title:`Meet ${G.meetNo + 1} of ${MEETS}`, sub:'Top 3 in the standings after five meets go on' };
+  if (G.phase === 'meets') return { kind:'meet', title:`Meet ${G.meetNo + 1} of ${MEETS}`, sub:'Top 3 in the standings after three meets go on' };
   if (G.phase === 'stage') { const names = STAGES[G.level], last = G.stage === names.length - 1; return { kind:'stage', title:names[G.stage], sub:last ? (G.level === 'd1' ? 'Win it and the USA team is yours' : G.level === 'usa' ? 'One shot' : 'The last meet of the season') : needWin() ? 'Win it to go to Nationals' : 'Top 3 go on' }; }
   return null;
 }
@@ -1100,7 +1100,7 @@ function tableHTML(){
   const rows = st.map((t, i) => `<tr class="${t.user ? 'me' : ''} ${i === 3 ? 'cut' : ''}"><td class="num">${i + 1}</td><td class="tl"><span class="trow">${chipDot(t)}${esc(t.name)}</span></td><td class="num">${t.meets}</td><td class="num">${t.pts}</td></tr>`).join('');
   const body = G.level === 'usa' ? `<div class="muted">The Olympics are a single meet: no standings.</div>` : `<table><tr><th>#</th><th style="text-align:left">Team</th><th>Meets</th><th>Pts</th></tr>${rows}</table>`;
   return topBar('Standings', `<button class="btn sm" data-a="ldr" data-m="0">Fastest</button>${backBtn}`) + `<div class="panel">${body}</div>
-    <div class="muted fanote" style="font-size:13px;margin-top:8px">Each relay scores 10-8-6-4-2-1. After five meets the top three go on to ${STAGES[G.level][0]}.</div>`;
+    <div class="muted fanote" style="font-size:13px;margin-top:8px">Each relay scores 10-8-6-4-2-1. After three meets the top three go on to ${STAGES[G.level][0]}.</div>`;
 }
 // every runner in your league (and in the meet you are at), fastest first at each distance: the top eight, the league
 // average and where your best man stands (user: like the league leaders in Retro Basket; the 800 from college up)
