@@ -1296,6 +1296,7 @@ function figure(p, U, o){
     th = LEAN[o.lean]; legs = [[RUN_A[f], RUN_K[f]], [RUN_A[f2], RUN_K[f2]]]; arms = [[RUN_ARM[f], 1.5], [RUN_ARM[f2], 1.5]];
     if (o.arm === 'back') arms[0] = [-1.75, .1];
     if (o.arm === 'fwd') arms[0] = [1.35, .15];
+    if (o.arm === 'up') arms = [[2.7, .15], [3.25, .15]];             // both hands in the air: the winner
   }
   const T1 = 2.7, T2 = 2.7, A1 = 2.1, A2 = 2.1, TR = 4.4;
   const ankleY = ([a, k]) => T1 * Math.cos(a) + T2 * Math.cos(a - k);
@@ -1480,6 +1481,7 @@ function banner(text, small = ''){ const b = $('#banner'); if (!text) { b.hidden
    the old one eases down and stops about 25 m later. A tap of 0.00 would be a seamless pass; nobody ever goes slower
    than half speed because of a tap, the time lost is only the time spent at half speed.
    What is drawn always adds up to the times the race is run in (H): each man's speed is shaped to fit his leg. */
+const DECEL = 1;                                                      // m/s lost every second after the finish line
 const ZONE = 6, REACH = 1.2, EASE = 25, ARM = 2;                        // ARM: live seconds before the cue that the prompt wakes up
 const STEPS_400 = 90;                                                 // steps a runner takes in a lap; one turn of the 8-frame cycle is two steps
 // how a man covers m0..m1 between t0 and t1: from speed v0 up to his cruise over the first strides, the cruise fading
@@ -1509,7 +1511,12 @@ function legKin(S, tm, i){
 function runnerAt(tm, i, T){
   const L = R.ev.leg, { H, Z, go } = tm;
   if (i === 0 && !(T >= H[0])) return { m:0, st:'blocks' };
-  if (T >= H[i + 1]) {                                                // handed on, or finished: ease down and stop
+  if (i === 3 && T >= H[4]) {                                         // across the line (user): he slows by DECEL (1 m/s every second, smoothly),
+    // so the quicker he was going the further past the line he gets (8 m/s: 32 m). The winner first holds full speed for 2 s, hands up.
+    const v = tm.vE[3], hold = tm.won ? 2 : 0, t = T - H[4], tb = Math.max(0, t - hold), ts = v / DECEL, u = Math.min(tb, ts);
+    return { m:tm.b[3] + v * Math.min(t, hold) + v * u - DECEL * u * u / 2, st:tb < ts ? 'slow' : 'done', s:u / ts, since:(tb - ts) / R.speed, hands:tm.won && t < hold + ts * .6 };
+  }
+  if (T >= H[i + 1]) {                                                // handed on: ease down and stop
     const td = 2 * EASE / tm.vE[i], s = clamp((T - H[i + 1]) / td, 0, 1);
     return { m:tm.b[i] + EASE * (1 - (1 - s) * (1 - s)), st:s < 1 ? 'slow' : 'done', s, since:(T - H[i + 1] - td) / R.speed };
   }
@@ -1603,8 +1610,9 @@ function update(dt){
     if (i >= 1 && i <= 3 && me.legs[i].tap === null && R.T >= me.Z[i - 1] + RMAX * TAPX) userGo(i, RMAX, false);
     simRun(S, R.T);
     if (!R.final && R.T >= me.H[4]) R.final = [ordinal(1 + S.teams.filter(t => t.H[4] < me.H[4]).length), fmt(me.H[4])];
-    if (R.end === Infinity && S.teams.every(t => t.H[4] !== undefined)) R.end = Math.max(...S.teams.map(t => t.H[4]));
-    if (R.T >= R.end) { R.over += dt; if (R.over > 2.6) return endRace(); }
+    if (!R.winner) { const f = S.teams.filter(t => R.T >= t.H[4]).sort((a, b) => a.H[4] - b.H[4])[0]; if (f) { R.winner = f; f.won = true; } }   // first across the line
+    if (R.end === Infinity && S.teams.every(t => t.H[4] !== undefined)) { R.end = Math.max(...S.teams.map(t => t.H[4])); R.linger = Math.max(2.6, Math.max(...S.teams.map(t => t.vE[3] || 0)) / DECEL / K + .8); }   // long enough to watch the last man slow to a stop
+    if (R.T >= R.end) { R.over += dt; if (R.over > R.linger) return endRace(); }
   }
   if (R.final) banner(...R.final);
   else if (R.flash && R.real < R.flash.until) banner(R.flash.text, R.flash.small);
@@ -1646,7 +1654,7 @@ function draw(dt){
         o = { f:Math.floor(tm.ph[i] * 8) % 8, arm:'pump', lean:3 };
         if (s.st === 'carry') { o.baton = true; o.lean = i === 0 ? (s.m < 6 ? 5 : s.m < 16 ? 4 : 3) : 3; if (i < 3 && s.left < 5) o.arm = 'fwd'; }
         else if (s.st === 'go') { o.lean = s.s < .55 ? 4 : 3; if (s.s > .62) o.arm = 'back'; }
-        else { o.lean = s.s < .35 ? 2 : s.s < .75 ? 1 : 0; o.baton = i === 3; }
+        else { o.lean = s.s < .35 ? 2 : s.s < .75 ? 1 : 0; o.baton = i === 3; if (s.hands) { o.arm = 'up'; o.lean = 1; } }
       }
       tm.lx[i] = s.m;
       const p = place(tm, i, s.m);
