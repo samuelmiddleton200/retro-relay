@@ -1610,7 +1610,7 @@ function update(dt){
     if (i >= 1 && i <= 3 && me.legs[i].tap === null && R.T >= me.Z[i - 1] + RMAX * TAPX) userGo(i, RMAX, false);
     simRun(S, R.T);
     if (!R.final && R.T >= me.H[4]) R.final = [ordinal(1 + S.teams.filter(t => t.H[4] < me.H[4]).length), fmt(me.H[4])];
-    if (!R.winner) { const f = S.teams.filter(t => R.T >= t.H[4]).sort((a, b) => a.H[4] - b.H[4])[0]; if (f) { R.winner = f; f.won = true; } }   // first across the line
+    if (!R.winner) { const f = S.teams.filter(t => R.T >= t.H[4]).sort((a, b) => a.H[4] - b.H[4])[0]; if (f) { R.winner = f; f.won = true; R.conf = []; R.confT = 3.5; } }   // first across the line: confetti in the winner's two colors (user)
     if (R.end === Infinity && S.teams.every(t => t.H[4] !== undefined)) { R.end = Math.max(...S.teams.map(t => t.H[4])); R.linger = Math.max(2.6, Math.max(...S.teams.map(t => t.vE[3] || 0)) / DECEL / K + .8); }   // long enough to watch the last man slow to a stop
     if (R.T >= R.end) { R.over += dt; if (R.over > R.linger) return endRace(); }
   }
@@ -1677,6 +1677,13 @@ function draw(dt){
     if (e.mark) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(e.x - 3, e.y - 26, 6, 1.5); ctx.fillRect(e.x - 1.5, e.y - 24.5, 3, 1.5); }
   }
   ctx.globalAlpha = 1;
+  // confetti: falls from the top of the screen for a few seconds after the winner crosses, in that team's two colors
+  if (R.conf) {
+    if (R.confT > 0) { R.confT -= dt; for (let n = 0; n < 5; n++) R.conf.push({ x:rnd(-10, CW + 10), y:rnd(-12, -2), vx:rnd(-14, 14), vy:rnd(38, 85), w:pick([2, 2, 3]), h:pick([1, 2, 3]), c:pick([R.winner.t.c1, R.winner.t.c2]), ph:rnd(0, 6.3) }); }
+    ctx.setTransform(SS, 0, 0, SS, 0, 0);
+    R.conf = R.conf.filter(p => p.y < CH + 4);
+    for (const p of R.conf) { p.ph += dt * 7; p.x += (p.vx + Math.sin(p.ph) * 18) * dt; p.y += p.vy * dt; ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), p.w, Math.sin(p.ph * 1.3) > 0 ? p.h : 1); }
+  }
 }
 function loop(now){
   const dt = clamp((now - lastT) / 1000, 0, .05); lastT = now;
