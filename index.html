@@ -1246,7 +1246,8 @@ const ACT = {
   go:d => { screen = d.s; render(); },
   avg:d => { avgTab = +d.i; render(); },
   runner:d => { sel = d.id; screen = 'runner'; render(); },
-  hunter:() => { const r = G.roster.find(x => x.id === sel); if (!r) return; r.hunter = !r.hunter; save(); render(); },
+  // one anchor at a time (user): marking a runner takes the mark off whoever had it
+  hunter:() => { const r = G.roster.find(x => x.id === sel); if (!r) return; const on = !r.hunter; G.roster.forEach(x => { x.hunter = false; }); r.hunter = on; save(); render(); },
   train:d => { const r = G.roster.find(x => x.id === sel), cost = trainCost(r, d.k); if (G.tp < cost || r[d.k] >= capOf(d.k)) return; G.tp -= cost; r[d.k] = clamp(r[d.k] + 1, 1, capOf(d.k)); r.tr[d.k] = (r.tr[d.k] || 0) + 1; save(); render(); },
   meet:() => { if (!G.meet) startMeet(); away = false; save(); render(); },
   leave:() => { away = true; screen = 'hub'; render(); },
