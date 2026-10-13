@@ -1089,7 +1089,7 @@ function runnerHTML(){
   return topBar(esc(`${r.fn} ${r.ln}`), `<button class="btn sm" data-a="go" data-s="squad">Back</button>`) + `<div class="pp">
     <div class="face"><div class="top" style="background:${G.school.c1}"><img src="${portrait(r, G.school.c1)}" alt=""></div><div class="bot"><div class="px">${['Freshman', 'Sophomore', 'Junior', 'Senior'][r.year]}</div>
       <div class="bests num"><span class="label"></span><span class="label">Rated</span><span class="label">Best</span>${DISTS().map(d => `<span>${d}</span><b>${fmt(pbOf(r, d))}</b><b class="yellow">${r.pb && r.pb[d] ? fmt(r.pb[d]) : '-'}</b>`).join('')}</div>
-      <button class="btn sm ${r.hunter ? 'go' : ''}" style="margin-top:6px;width:100%" data-a="hunter">${r.hunter ? 'Hunter: on' : 'Mark as hunter'}</button></div></div>
+      <button class="btn sm ${r.hunter ? 'go' : ''}" style="margin-top:6px;width:100%" data-a="hunter">${r.hunter ? 'Anchor: on' : 'Mark as anchor'}</button></div></div>
     <div class="panel">${rows}</div></div>`;
 }
 function tableHTML(){
@@ -1132,8 +1132,9 @@ function recordsHTML(){
 }
 
 /* ---- the meet: the order your four run in ---- */
-// a runner you have marked as a hunter on his page (user): a reminder, shown wherever you set the order, of who to run when chasing
-const hunterTag = r => r.hunter ? ' <span class="htag">Hunter</span>' : '';
+// a runner you have marked as an anchor on his page (user): a reminder, shown wherever you set the order, of who runs last
+// (saved as r.hunter: it was first called a hunter mark)
+const hunterTag = r => r.hunter ? ' <span class="htag">Anchor</span>' : '';
 function lineupHTML(){
   const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= [null, null, null, null];   // nothing filled in for you (user)
   // the freshest first: most energy to least (user); the time shown is still his best for this distance, with what his tiredness adds under it
