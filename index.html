@@ -512,9 +512,10 @@ const EVENTS = [
   { key:'x100', name:'4x100', leg:100, fly:.6, cost:30, x:2 },
   { key:'x200', name:'4x200', leg:200, fly:.5, cost:44, x:3 },
   { key:'x400', name:'4x400', leg:400, fly:.4, cost:62, x:4 },
-  { key:'x800', name:'4x800', leg:800, fly:.3, cost:82, x:6 },
+  // not a relay (user): ONE runner from each team runs 1600 m, four laps. solo: one leg, no baton, no handoffs.
+  { key:'m1600', name:'1600 m', leg:1600, fly:0, cost:90, x:6, solo:true },
 ];
-// high school meets are the first three; college and the Olympics add the 4x800 as a fourth relay (user)
+// high school meets are the first three; college and the Olympics add a fourth race, the 1600 m (user: it was a 4x800 at first)
 const EVS = () => G.level === 'hs' ? EVENTS.slice(0, 3) : EVENTS;
 const DISTS = () => EVS().map(e => e.leg);
 const POINTS = [10, 8, 6, 4, 2, 1];                                    // meet points for places 1-6 in each relay
@@ -579,20 +580,20 @@ const CAP = { hs:74, d2:82, d1:90, usa:97 };
    missing the championship meets, up about 1.6 for each round you get through, never below where the school started and
    never more than PROG_UP above it (winning does not turn a small college into a powerhouse: you move up by taking jobs). */
 const PROG_UP = { hs:24, d2:8, d1:5 };
-/* Times (user): a runner with 100 Speed and 100 Endurance, the most anyone can have, runs 9.40 / 18.80 / 42.50 / 1:37.00.
+/* Times (user): a runner with 100 Speed and 100 Endurance, the most anyone can have, runs 9.40 / 18.80 / 42.50, and 3:38.00 for the 1600.
    Every point under 100 makes him a true PERCENTAGE slower (user: "1% of 12 secs is more than 1% of 10"), so an upgrade
    takes the same share off whatever he runs now; RATES is that share per point, as a fraction:
-       Speed      100: 0.24%   200: 0.18%   400: 0.12%   800: 0.06%
-       Endurance  100: 0.12%   200: 0.18%   400: 0.24%   800: 0.30%
+       Speed      100: 0.24%   200: 0.18%   400: 0.12%   1600: none
+       Endurance  100: 0.12%   200: 0.18%   400: 0.24%   1600: 0.36%
    One steps down by 0.06 a distance and the other steps up by 0.06, and the two always add up to 0.36 (user: they
    should be the same pattern in reverse).
    which still lands on the benchmarks: at 34 / 34 (an average high school runner) 11.92 / 23.84 / 53.9, at 61 (state
-   level) 10.82 for the 100, at 80 (college elite) 10.10, and about 1:48 for the 800 at 70. */
-const BEST = { 100:9.4, 200:18.8, 400:42.5, 800:97 };
-const RATES = { 100:[.0024, .0012], 200:[.0018, .0018], 400:[.0012, .0024], 800:[.0006, .003] };
+   level) 10.82 for the 100, at 80 (college elite) 10.10, and about 4:03 for the 1600 at 70. */
+const BEST = { 100:9.4, 200:18.8, 400:42.5, 1600:218 };              // the 1600: 3:38.00 for the 100 / 100 runner, about 4:03 at 70
+const RATES = { 100:[.0024, .0012], 200:[.0018, .0018], 400:[.0012, .0024], 1600:[0, .0036] };   // the 1600 is all Endurance (user: "you have to have 1 good endurance runner")
 const rated = (r, d) => BEST[d] * Math.exp(RATES[d][0] * (100 - r.spd) + RATES[d][1] * (100 - r.end));
-const t100 = r => rated(r, 100), t200 = r => rated(r, 200), t400 = r => rated(r, 400), t800 = r => rated(r, 800);
-const pbOf = (r, leg) => leg === 100 ? t100(r) : leg === 200 ? t200(r) : leg === 400 ? t400(r) : t800(r);
+const t100 = r => rated(r, 100), t200 = r => rated(r, 200), t400 = r => rated(r, 400);
+const pbOf = (r, leg) => rated(r, leg);
 const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}` : t.toFixed(2);
 
 /* ---- runners (user): four ratings ----
@@ -602,8 +603,8 @@ const fmt = t => t >= 60 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
 const RATE = ['spd', 'end', 'hunt', 'rec'];
 const RATE_NAME = { spd:'Speed', end:'Endurance', hunt:'Hunt', rec:'Recovery' };
 // what one upgrade does, in 40 characters or fewer, as percentages only (user: quick numbers, no examples)
-const RATE_DESC = { get spd(){ return '100 +.24% 200 +.18% 400 +.12%' + (G.level === 'hs' ? '' : ' 800 +.06%'); },
-  get end(){ return '100 +.12% 200 +.18% 400 +.24%' + (G.level === 'hs' ? '' : ' 800 +.3%'); },
+const RATE_DESC = { get spd(){ return '100 +.24% 200 +.18% 400 +.12%' + ''; },
+  get end(){ return '100 +.12% 200 +.18% 400 +.24%' + (G.level === 'hs' ? '' : ' 1600 +.36%'); },
   hunt:'+0.1% speed when not leading, over 50',
   rec:'+0.5% energy back after each race' };
 const capOf = k => 100;
@@ -630,7 +631,7 @@ const teamLevel = t => avg(t.roster.map(r => r.spd));
             energy, 2% off at 70, 5% at 50, 10% at 30, 20% at empty. A fresh man runs exactly his rated time.
           x the day: anywhere from 1% quicker to 1% slower, evenly (user)
           and, if the team is not in the lead when he gets the baton, less his Hunt boost.
-   It costs him energy: 30 / 44 / 62 / 82 for the 100 / 200 / 400 / 800, less with good Endurance, and he gets half
+   It costs him energy: 30 / 44 / 62 / 90 for the 100 / 200 / 400 / 1600, less with good Endurance, and he gets half
    his Recovery back between races. (Raised from 26 / 38 / 56 / 75 at the user's request so that Recovery matters in
    every relay: an average high schooler now starts his 200 on about 85 and his 400 on about 54.) */
 const TIRE = .00002;
@@ -652,14 +653,14 @@ const legRun = (r, ev, legIdx, energy, luck = 0) => (pbOf(r, ev.leg) - (legIdx ?
    tap) the race is shown at 2x, so what you watch is what you are charged. To keep the times where they were, the computer's tap
    costs what a start (SB) and a pass (XB) always did; quicker than that gains on it, slower loses.
    Too early (before the gun, or before the cue) counts as EARLY; no tap at all goes at RMAX. */
-const TAPX = 2;                                                       // a tap costs twice its time on the race clock, the 4x100 and the 4x800 alike (user): 0.3 s is 0.6 s
+const TAPX = 2;                                                       // a tap costs twice its time on the race clock, in every race alike (user): 0.3 s is 0.6 s
 const SB = .15, XB = .33, RMAX = .65, EARLY = .7;   // EARLY .7 (user): a false start or an early handoff has to hurt, or guessing every cue is free
 // the other teams do not vary any more (user): every start is 0.30 s (0.6 on the clock) and every handoff 0.25 s (0.5).
 // Those are also the taps that cost exactly what a start (SB) and a pass (XB) always did: beat them and you gain.
 const AI_START = .3, AI_PASS = .25;
 const aiTap = i => i ? AI_PASS : AI_START;
 // what a leg should take with an average tap: for the lineup screen and the computer's coaches (the Hunt boost is not counted)
-const legProj = (r, ev, i, energy) => legRun(r, ev, i, energy) + (i === 0 ? SB : 0) + (i < 3 ? XB : 0);
+const legProj = (r, ev, i, energy) => legRun(r, ev, i, energy) + (i === 0 ? SB : 0) + (i < 3 && !ev.solo ? XB : 0);
 function projected(team, ev, lineup){
   let t = 0;
   lineup.forEach((L, i) => { const r = team.roster[L.i]; t += legProj(r, ev, i, team.energy[r.id] ?? 100); });
@@ -667,7 +668,7 @@ function projected(team, ev, lineup){
 }
 // the computer's order (and the order your lineup starts in): the man with the least Hunt leads off (it never counts there), then slowest to fastest
 function autoLineup(team, ev){
-  const idx = team.roster.map((r, i) => ({ i, t:legRun(r, ev, 1, team.energy[r.id] ?? 100), hunt:r.hunt })).sort((a, b) => a.t - b.t).slice(0, 4);
+  const idx = team.roster.map((r, i) => ({ i, t:legRun(r, ev, 1, team.energy[r.id] ?? 100), hunt:r.hunt })).sort((a, b) => a.t - b.t).slice(0, ev.solo ? 1 : 4);
   const lead = idx.slice().sort((a, b) => a.hunt - b.hunt)[0], rest = idx.filter(x => x !== lead).sort((a, b) => b.t - a.t);
   return [lead, ...rest].map(x => ({ i:x.i }));
 }
@@ -690,7 +691,7 @@ function simArrive(S, tm){
   const i = tm.next, leg = tm.legs[i], K = TAPX;
   if (i) { leg.behind = S.passed[i] > 0; S.passed[i]++; }
   leg.D = leg.run * (1 - (leg.behind ? leg.hunt : 0));
-  if (i === 3) tm.H[4] = tm.H[3] + leg.D;
+  if (i === tm.legs.length - 1) tm.H[i + 1] = tm.H[i] + leg.D + (i === 0 ? SB - AI_START * K : 0);   // the last man: the finish (a one-man race pays for its start here)
   else {
     tm.Z[i] = tm.H[i] + leg.D + XB - AI_PASS * K + (i === 0 ? SB - AI_START * K : 0);    // when the next man would get it with a tap of zero
     const nx = tm.legs[i + 1]; if (nx.tap !== null) tm.H[i + 1] = tm.Z[i] + nx.tap * K;
@@ -701,14 +702,14 @@ function simArrive(S, tm){
 function simRun(S, T){
   for (;;) {
     let best = null;
-    for (const tm of S.teams) if (tm.next <= 3 && tm.H[tm.next] <= T && (!best || tm.H[tm.next] < best.H[best.next])) best = tm;
+    for (const tm of S.teams) if (tm.next < tm.legs.length && tm.H[tm.next] <= T && (!best || tm.H[tm.next] < best.H[best.next])) best = tm;
     if (!best) return;
     simArrive(S, best);
   }
 }
 // the finished race: each team's splits (from getting the baton to passing it; the first from the gun) and total, fastest first
 function simResult(S){
-  const out = S.teams.map(tm => ({ ti:tm.ti, total:tm.H[4], legs:tm.legs.map((l, i) => ({ id:l.id, name:l.name, t:tm.H[i + 1] - (i ? tm.H[i] : 0), before:l.before, after:l.after, tap:l.tap, early:l.early, behind:l.behind && l.hunt > 0 })) }));
+  const out = S.teams.map(tm => ({ ti:tm.ti, total:tm.H[tm.legs.length], legs:tm.legs.map((l, i) => ({ id:l.id, name:l.name, t:tm.H[i + 1] - (i ? tm.H[i] : 0), before:l.before, after:l.after, tap:l.tap, early:l.early, behind:l.behind && l.hunt > 0 })) }));
   out.sort((a, b) => a.total - b.total).forEach((o, k) => { o.place = k + 1; o.pts = POINTS[k]; });
   return out;
 }
@@ -1053,7 +1054,7 @@ function createHTML(){
   const list = HS.map(r => { const t = school(r, 'hs'); return `<button class="tpick ${pickedTeam === t.abbr ? 'on' : ''}" data-a="pickTeam" data-t="${t.abbr}">${badge(t, 'sm')}<div class="tn"><b>${esc(t.name)}</b></div></button>`; }).join('');
   return `<div class="bar"><button class="btn sm" data-a="slots">Back</button><div class="title">Pick your high school</div><span></span></div>
     <div class="panel"><div class="tgrid five">${list}</div></div>
-    <div class="row between" style="margin-top:10px"><div class="muted intro" style="font-size:13px">You coach four runners through the 4x100, 4x200 and 4x400 (and the 4x800 in college), and you call every start and handoff. Win State and the colleges start calling.</div>
+    <div class="row between" style="margin-top:10px"><div class="muted intro" style="font-size:13px">You coach four runners through the 4x100, 4x200 and 4x400 (and a one-man 1600 m in college), and you call every start and handoff. Win State and the colleges start calling.</div>
     <button class="btn go" data-a="create" ${pickedTeam ? '' : 'disabled'}>Start career</button></div>`;
 }
 function hubHTML(){
@@ -1103,7 +1104,7 @@ function tableHTML(){
     <div class="muted fanote" style="font-size:13px;margin-top:8px">Each relay scores 10-8-6-4-2-1. After three meets the top three go on to ${STAGES[G.level][0]}.</div>`;
 }
 // every runner in your league (and in the meet you are at), fastest first at each distance: the top eight, the league
-// average and where your best man stands (user: like the league leaders in Retro Basket; the 800 from college up)
+// average and where your best man stands (user: like the league leaders in Retro Basket; the 1600 from college up)
 // by team (user): each league team's best time this season in every relay, fastest first
 function relaysHTML(){
   const cols = EVS().map(ev => { const list = [...G.teams].sort((a, b) => (a.best[ev.key] || 1e9) - (b.best[ev.key] || 1e9));
@@ -1139,16 +1140,16 @@ function recordsHTML(){
 // (saved as r.hunter: it was first called a hunter mark)
 const hunterTag = r => r.hunter ? '<span class="htag">Anchor</span>' : '';
 function lineupHTML(){
-  const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= [null, null, null, null];   // nothing filled in for you (user)
+  const M = G.meet, ev = EVS()[M.ev], T = M.teams.find(t => t.user), L = G.lineup ||= Array(ev.solo ? 1 : 4).fill(null);   // nothing filled in for you (user); the 1600 has one spot
   // fastest first by his best time for this distance (user: tried energy order, went back to this); what his tiredness adds is shown under it
   const now = r => legRun(r, ev, 1, T.energy[r.id]);
   const rows = T.roster.map((r, i) => ({ r, i })).sort((a, b) => pbOf(a.r, ev.leg) - pbOf(b.r, ev.leg)).map(({ r, i }) => { const en = T.energy[r.id], leg = L.findIndex(x => x && x.i === i), slow = legRun(r, ev, 1, en) - legRun(r, ev, 1, 100);
     return `<button class="rrow ${leg >= 0 ? 'on' : ''}" data-a="pickR" data-i="${i}"><img src="${portrait(r, G.school.c1)}" alt="">
       <span class="nm"><span class="nt">${esc(short(r))}</span><span class="yr">${YEARS[r.year]}</span>${hunterTag(r)}</span>
       <span class="num pb">${fmt(pbOf(r, ev.leg))}${slow >= .05 ? `<small>+${slow.toFixed(2)}</small>` : ''}</span>
-      ${enBar(en)}<span class="tag ${leg >= 0 ? '' : 'off'}">${leg >= 0 ? 'LEG ' + (leg + 1) : ''}</span></button>`; }).join('');
+      ${enBar(en)}<span class="tag ${leg >= 0 ? '' : 'off'}">${leg >= 0 ? (ev.solo ? 'RUNS' : 'LEG ' + (leg + 1)) : ''}</span></button>`; }).join('');
   const full = L.every(Boolean);
-  const legs = L.map((x, i) => { const what = ['Start', 'Leg 2', 'Leg 3', 'Anchor'][i];
+  const legs = L.map((x, i) => { const what = ev.solo ? 'Runner' : ['Start', 'Leg 2', 'Leg 3', 'Anchor'][i];
     if (!x) return `<div class="leg empty"><span class="label">${what}</span><span class="muted">Tap a runner</span></div>`;
     const r = T.roster[x.i], en = T.energy[r.id], after = clamp(en - legCost(r, ev), 0, 100);
     return `<div class="leg"><span class="label">${what}</span><button class="lname" data-a="dropLeg" data-l="${i}"><span class="lrow"><span class="nt">${esc(short(r))}</span>${hunterTag(r)}</span><span class="after" style="color:${enColor(after)}">${Math.round(en)} to ${Math.round(after)}</span></button>
@@ -1250,10 +1251,10 @@ const ACT = {
   meet:() => { if (!G.meet) startMeet(); away = false; save(); render(); },
   leave:() => { away = true; screen = 'hub'; render(); },
   pickR:d => { const L = G.lineup, i = +d.i, at = L.findIndex(x => x && x.i === i);
-    if (at >= 0) L[at] = null; else { const free = L.indexOf(null); if (free < 0) return toast('All four legs are filled: tap a leg to free it'); L[free] = { i }; }
+    if (at >= 0) L[at] = null; else { const free = L.indexOf(null); if (free < 0) return toast(L.length === 1 ? 'One runner only: tap him on the right to change' : 'All four legs are filled: tap a leg to free it'); L[free] = { i }; }
     render(); },
   dropLeg:d => { G.lineup[+d.l] = null; render(); },
-  clear:() => { G.lineup = [null, null, null, null]; render(); },
+  clear:() => { G.lineup = G.lineup.map(() => null); render(); },
   race:() => { const M = G.meet; if (!G.lineup.every(Boolean)) return; M.teams.find(t => t.user).lineup = G.lineup.map(x => ({ ...x })); prepRace(); save(); startRace(); },
   next:() => { G.meet.watching = false; afterEvent(); save(); render(); },
   postOk:() => { G.last.seen = true; save(); render(); },
@@ -1379,7 +1380,7 @@ const CH = 180, SS = 4, LS = 660, RX0 = 210, RY0 = 210, LW = 9, LANES = 6, PAD =
 const TILT = .5;   // LW: every lane is the same width all the way round, bends and straights (user)
 const RXO = RX0 + LANES * LW, RYO = RY0 + LANES * LW, XL = PAD + RXO, XR = XL + LS, CY = STAND + 60 + RYO * TILT, WORLD_W = XR + RXO + PAD, WORLD_H = CY + RYO * TILT + 8;
 const LANE_M = 7.5;                                                   // metres a lap gains per lane out
-const stagger = ev => LANE_M * (ev.leg === 100 ? 1 : 2);              // head start per lane out: the 4x100 is one lap in lanes; the 4x200, 4x400 and 4x800 run two laps in lanes (user)
+const stagger = ev => LANE_M * (ev.leg === 100 || ev.solo ? 1 : 2);              // head start per lane out: the 4x100 is one lap in lanes; the 4x200, 4x400 and 4x800 run two laps in lanes (user)
 let CW = 320, cam = 0, camY = 0, R = null, raf = 0, lastT = 0, trackCv = null;
 const cv = $('#court'), ctx = cv.getContext('2d');
 // The inside edge of the track's bend is half an oval; every lane line is that edge moved straight outward by whole
@@ -1463,7 +1464,7 @@ function buildTrack(title, ev, surface = SURFACE.clay){
   for (let k = 0; k < LANES; k++) { const u = uOf(k, ST * k + 2.76), p = lanePos(k, u), q = lanePos(k, u + .002), dir = Math.atan2((q.y - p.y) / TILT, q.x - p.x);
     g.save(); g.translate(p.x, p.y); g.scale(1, TILT); g.rotate(dir + Math.PI / 2); pxText(g, String(k + 1), -3, -5, 'rgba(255,255,255,.92)', 2); g.restore(); }
   // the exchange zones: a yellow line where the next man waits and another 20 m on (the baton changes hands about 15 m in)
-  for (let i = 1; i < 4; i++) { const m = i * ev.leg, lanes = ev.leg < 400 || m < 800;
+  for (let i = 1; i < (ev.solo ? 1 : 4); i++) { const m = i * ev.leg, lanes = ev.leg < 400 || m < 800;
     for (let k = 0; k < LANES; k++) for (const add of [0, 20]) { if (!add && m % 400 === 0) continue; tick(k, lanes ? uOf(k, ST * k + m + add) : uOf(0, m + add), '#ffd23f', 1.25); } }
   return c;
 }
@@ -1509,28 +1510,28 @@ function mkProf(m0, m1, t0, t1, v0, f0, f1, brake, tu = 1.6){
 // man i of a team has just set off (called by the race as it steps). He took the baton wherever the two had got to at
 // half speed; shape his run from there to the next meeting point, which he reaches at tm.Z[i] (the next cue).
 function legKin(S, tm, i){
-  const leg = tm.legs[i], L = S.ev.leg;
+  const leg = tm.legs[i], L = S.ev.leg, A = tm.legs.length - 1;      // A: the anchor (the only man, in a one-man race)
   if (i) { tm.b[i - 1] = tm.bz[i - 1] + tm.vE[i - 1] * (tm.H[i] - tm.Z[i - 1]); tm.a[i] = tm.b[i - 1] + REACH; }
-  const k = tm.kin[i] = mkProf(tm.a[i], tm.bz[i], tm.H[i], i === 3 ? tm.H[4] : tm.Z[i], i ? tm.vE[i - 1] : 0, 1 / tired(leg.before), 1 / tired(leg.after), i < 3, i ? 1.6 : 2.6);
+  const k = tm.kin[i] = mkProf(tm.a[i], tm.bz[i], tm.H[i], i === A ? tm.H[A + 1] : tm.Z[i], i ? tm.vE[i - 1] : 0, 1 / tired(leg.before), 1 / tired(leg.after), i < A, i ? 1.6 : 2.6);
   tm.vE[i] = Math.max(2, k.vEnd);                                     // half speed: what the two of them hold from the cue to the tap
-  if (i < 3) { tm.tau[i + 1] = 2 * (ZONE + REACH) / tm.vE[i]; tm.go[i + 1] = tm.Z[i] - tm.tau[i + 1]; }   // the next man leaves by himself, to be at half speed at the cue
+  if (i < A) { tm.tau[i + 1] = 2 * (ZONE + REACH) / tm.vE[i]; tm.go[i + 1] = tm.Z[i] - tm.tau[i + 1]; }   // the next man leaves by himself, to be at half speed at the cue
 }
 // where man i of a team is at race time T: metres raced and what he's doing
 function runnerAt(tm, i, T){
-  const L = R.ev.leg, { H, Z, go } = tm;
+  const L = R.ev.leg, { H, Z, go } = tm, A = tm.legs.length - 1;
   if (i === 0 && !(T >= H[0])) return { m:0, st:'blocks' };
-  if (i === 3 && T >= H[4]) {                                         // across the line (user): he slows by DECEL (1 m/s every second, smoothly),
+  if (i === A && T >= H[A + 1]) {                                         // across the line (user): he slows by DECEL (1 m/s every second, smoothly),
     // so the quicker he was going the further past the line he gets (8 m/s: 32 m). The winner first holds full speed for 2 s, hands up.
-    const v = tm.vE[3], hold = tm.won ? 2 : 0, t = T - H[4], tb = Math.max(0, t - hold), ts = v / DECEL, u = Math.min(tb, ts);
-    return { m:tm.b[3] + v * Math.min(t, hold) + v * u - DECEL * u * u / 2, st:tb < ts ? 'slow' : 'done', s:u / ts, since:(tb - ts) / R.speed, hands:tm.won && t < hold + ts * .6 };
+    const v = tm.vE[A], hold = tm.won ? 2 : 0, t = T - H[A + 1], tb = Math.max(0, t - hold), ts = v / DECEL, u = Math.min(tb, ts);
+    return { m:tm.b[A] + v * Math.min(t, hold) + v * u - DECEL * u * u / 2, st:tb < ts ? 'slow' : 'done', s:u / ts, since:(tb - ts) / R.speed, hands:tm.won && t < hold + ts * .6 };
   }
   if (T >= H[i + 1]) {                                                // handed on: ease down and stop
     const td = 2 * EASE / tm.vE[i], s = clamp((T - H[i + 1]) / td, 0, 1);
     return { m:tm.b[i] + EASE * (1 - (1 - s) * (1 - s)), st:s < 1 ? 'slow' : 'done', s, since:(T - H[i + 1] - td) / R.speed };
   }
   if (T >= H[i]) {                                                    // he has the baton: his run, then (past the cue) half speed until the tap
-    const m = i < 3 && T > Z[i] ? tm.bz[i] + tm.vE[i] * (T - Z[i]) : tm.pos(i, T);
-    return { m, st:'carry', left:i < 3 ? Math.max(0, tm.bz[i] - m) : tm.bz[i] - m, stall:i < 3 && T > Z[i] };
+    const m = i < A && T > Z[i] ? tm.bz[i] + tm.vE[i] * (T - Z[i]) : tm.pos(i, T);
+    return { m, st:'carry', left:i < A ? Math.max(0, tm.bz[i] - m) : tm.bz[i] - m, stall:i < A && T > Z[i] };
   }
   if (T >= go[i]) {                                                   // building up from his mark, then half speed beside the man with the baton
     const z = Z[i - 1], s = clamp((T - go[i]) / (z - go[i]), 0, 1);
@@ -1539,12 +1540,13 @@ function runnerAt(tm, i, T){
   return { m:i * L, st:'wait' };
 }
 const smooth = v => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
-// a point on the screen for man i at m metres raced. 4x100 and 4x200: his own lane all the way. 4x400 and 4x800: the
-// first two laps (800 m) are in lanes, so the 4x400's first exchange is in lanes and the 4x800's lead-off runs his whole
+// a point on the screen for man i at m metres raced. 4x100 and 4x200: his own lane all the way. 4x400: the
+// first two laps (800 m) are in lanes, so the first exchange is in lanes; the 1600 (one man each) is in lanes for one lap
 // leg in his (user); from 700 m, the start of the last straight, the man with the baton eases across over about 50 m,
 // and from 800 m on everyone runs and hands off in lane 1 (overlapping is fine: user)
 function place(tm, i, m){
   const K = tm.lane, L = R.ev.leg;
+  if (R.ev.solo) return m < 400 ? lanePos(K, uOf(K, stagger(R.ev) * K + m)) : lanePos(K * (1 - smooth((m - 400) / 50)), uOf(0, m));   // the 1600: one lap in lanes, then lane 1 (user)
   if (L < 400) return lanePos(K, uOf(K, stagger(R.ev) * K + m));
   if (m < 800 && i * L < 800) return lanePos((i + 1) * L >= 800 ? K * (1 - smooth((m - 700) / 55)) : K, uOf(K, stagger(R.ev) * K + m));
   return lanePos(0, uOf(0, m));
@@ -1552,11 +1554,11 @@ function place(tm, i, m){
 function startRace(){
   const M = G.meet, ev = EVS()[M.ev], S = simNew(M, ev, true), L = ev.leg;
   // "On your marks", "Set" three seconds later, and the gun a random 2 to 4 s after that (user). The race plays at a
-  // fixed speed: 2x for the 4x100, 3x the 4x200, 4x the 4x400, 6x the 4x800 (user), so T, the race clock, runs S.K times real time.
+  // fixed speed: 2x for the 4x100, 3x the 4x200, 4x the 4x400, 6x the 1600 (user), so T, the race clock, runs S.K times real time.
   R = { ev, S, T:0, real:0, over:0, called:false, speed:S.K, setAt:3, gun:3 + rnd(2, 4), end:Infinity, flash:null, final:null, teams:S.teams };
   for (const tm of S.teams) { const t = tm.team;
-    Object.assign(tm, { t, lane:t.lane, U:{ J:t.c1, P:t.c2 }, runners:tm.legs.map(l => l.r), a:[0, 1, 2, 3].map(i => i ? i * L + ZONE + REACH : 0), b:[0, 1, 2, 3].map(i => i < 3 ? (i + 1) * L + ZONE : 4 * L), bz:[0, 1, 2, 3].map(i => i < 3 ? (i + 1) * L + ZONE : 4 * L),   // bz: where the two meet at half speed; b: where the baton actually passes
-      kin:[], vE:[], tau:[], go:[], pos:(i, T) => tm.kin[i].p(T), ph:[0, 1, 2, 3].map(() => Math.random()), lx:[null, null, null, null], xl:[0, 0, 0, 0] }); }   // xl: 4x400, every team hands off in lane 1 after laps 2 and 3 (user)
+    Object.assign(tm, { t, lane:t.lane, U:{ J:t.c1, P:t.c2 }, runners:tm.legs.map(l => l.r), a:tm.legs.map((_, i) => i ? i * L + ZONE + REACH : 0), b:tm.legs.map((_, i, a) => i < a.length - 1 ? (i + 1) * L + ZONE : a.length * L), bz:tm.legs.map((_, i, a) => i < a.length - 1 ? (i + 1) * L + ZONE : a.length * L),   // bz: where the two meet at half speed; b: where the baton actually passes
+      kin:[], vE:[], tau:[], go:[], pos:(i, T) => tm.kin[i].p(T), ph:tm.legs.map(() => Math.random()), lx:tm.legs.map(() => null), xl:[0, 0, 0, 0] }); }   // xl: 4x400, every team hands off in lane 1 after laps 2 and 3 (user)
   R.mine = S.teams.find(t => t.user);
   S.onArrive = (tm, i) => legKin(S, tm, i);
   trackCv = buildTrack(M.big ? M.title.toUpperCase().replace(/[^A-Z0-9 ]/g, '') : 'RETRO RELAY', ev, M.big ? surfaceOf(M.title) : SURFACE.clay);
@@ -1572,7 +1574,7 @@ function endRace(){
   bookRace(simResult(S)); G.meet.watching = true; save(); render();
 }
 // metres the baton has gone
-const batonAt = (tm, T) => { if (T >= tm.H[4]) return 1e5 - tm.H[4]; if (!(T >= tm.H[0])) return 0; let i = 0; while (i < 3 && T >= tm.H[i + 1]) i++; return tm.pos(i, T); };
+const batonAt = (tm, T) => { const N = tm.legs.length; if (T >= tm.H[N]) return 1e5 - tm.H[N]; if (!(T >= tm.H[0])) return 0; let i = 0; while (i < N - 1 && T >= tm.H[i + 1]) i++; return tm.pos(i, T); };
 /* ---- your taps ----
    The start: tap after the gun; before it (once "Set" is up) is a false start and counts as EARLY.
    A handoff: the words on the screen wake up ARM seconds ahead and light at the cue, the moment your two runners are
@@ -1596,30 +1598,30 @@ function tap(){
     if (real < R.setAt) return;                                       // nothing counts before "Set"
     return real < R.gun ? userStart(EARLY, true) : userStart(clamp(real - R.gun, 0, RMAX), false);
   }
-  const i = tm.next; if (i < 1 || i > 3 || tm.legs[i].tap !== null) return;
+  const i = tm.next; if (i < 1 || i >= tm.legs.length || tm.legs[i].tap !== null) return;
   const cue = tm.Z[i - 1], T = R.T + (real - R.real) * (R.T >= cue ? TAPX : K);
   if (T < cue - ARM * K) return;                                       // the prompt is still asleep
   if (T < cue) userGo(i, EARLY, true); else userGo(i, clamp((T - cue) / TAPX, 0, RMAX), false);
 }
 let orderT = 0, tapLabel = '';
 function update(dt){
-  const S = R.S, K = S.K, me = R.mine;
+  const S = R.S, K = S.K, me = R.mine, N = me.legs.length;
   R.real += dt;
   if (R.real >= R.gun) {
     // the race clock: at the race's speed, except while you are on the clock for a tap (after the gun, or after a
     // handoff cue), when it runs at TAPX so that the wait you see is the time you are charged
     let left = Math.min(dt, R.real - R.gun);
-    const j = me.next, cue = j >= 1 && j <= 3 && me.legs[j].tap === null ? me.Z[j - 1] : undefined;
+    const j = me.next, cue = j >= 1 && j < N && me.legs[j].tap === null ? me.Z[j - 1] : undefined;
     if (me.legs[0].tap === null) R.T += left * TAPX;
     else if (cue !== undefined) { if (R.T < cue) { const run = Math.min(left, (cue - R.T) / K); R.T += run * K; left -= run; } R.T += left * TAPX; }
     else R.T += left * K;
     if (me.legs[0].tap === null && R.T >= RMAX * TAPX) userStart(RMAX, false);
     const i = me.next;
-    if (i >= 1 && i <= 3 && me.legs[i].tap === null && R.T >= me.Z[i - 1] + RMAX * TAPX) userGo(i, RMAX, false);
+    if (i >= 1 && i < N && me.legs[i].tap === null && R.T >= me.Z[i - 1] + RMAX * TAPX) userGo(i, RMAX, false);
     simRun(S, R.T);
-    if (!R.final && R.T >= me.H[4]) R.final = [ordinal(1 + S.teams.filter(t => t.H[4] < me.H[4]).length), fmt(me.H[4])];
-    if (!R.winner) { const f = S.teams.filter(t => R.T >= t.H[4]).sort((a, b) => a.H[4] - b.H[4])[0]; if (f) { R.winner = f; f.won = true; R.conf = []; R.confT = 3.5; } }   // first across the line: confetti in the winner's two colors (user)
-    if (R.end === Infinity && S.teams.every(t => t.H[4] !== undefined)) { R.end = Math.max(...S.teams.map(t => t.H[4])); R.linger = Math.max(2.6, Math.max(...S.teams.map(t => t.vE[3] || 0)) / DECEL / K + .8); }   // long enough to watch the last man slow to a stop
+    if (!R.final && R.T >= me.H[N]) R.final = [ordinal(1 + S.teams.filter(t => t.H[N] < me.H[N]).length), fmt(me.H[N])];
+    if (!R.winner) { const f = S.teams.filter(t => R.T >= t.H[N]).sort((a, b) => a.H[N] - b.H[N])[0]; if (f) { R.winner = f; f.won = true; R.conf = []; R.confT = 3.5; } }   // first across the line: confetti in the winner's two colors (user)
+    if (R.end === Infinity && S.teams.every(t => t.H[N] !== undefined)) { R.end = Math.max(...S.teams.map(t => t.H[N])); R.linger = Math.max(2.6, Math.max(...S.teams.map(t => t.vE[N - 1] || 0)) / DECEL / K + .8); }   // long enough to watch the last man slow to a stop
     if (R.T >= R.end) { R.over += dt; if (R.over > R.linger) return endRace(); }
   }
   if (R.final) banner(...R.final);
@@ -1630,7 +1632,7 @@ function update(dt){
   // the tap button: what it will do next, awake when a tap would count, lit at the gun or the cue
   const i = me.next; let label = '', cls = '';
   if (me.legs[0].tap === null) { label = 'Start'; cls = R.real >= R.gun ? 'hot' : R.real >= R.setAt ? 'armed' : ''; }
-  else if (i >= 1 && i <= 3 && me.legs[i].tap === null) { label = 'Handoff'; cls = R.T >= me.Z[i - 1] ? 'hot' : R.T >= me.Z[i - 1] - ARM * K ? 'armed' : ''; }
+  else if (i >= 1 && i < N && me.legs[i].tap === null) { label = 'Handoff'; cls = R.T >= me.Z[i - 1] ? 'hot' : R.T >= me.Z[i - 1] - ARM * K ? 'armed' : ''; }
   if (label + cls !== tapLabel) { tapLabel = label + cls; const b = $('#tapBtn'); b.hidden = !label; b.textContent = cls === 'hot' ? (label === 'Start' ? 'Go! Tap!' : 'Handoff! Tap!') : cls === 'armed' ? (label === 'Start' ? 'Tap at the gun' : 'Handoff coming: tap on the cue') : label === 'Start' ? 'Tap anywhere to start' : 'Tap anywhere to hand off'; b.className = 'tapmsg ' + cls; }
   $('#clk').textContent = fmt(Math.min(R.T, R.end));
   if ((orderT -= dt) <= 0) { orderT = .2;
@@ -1642,33 +1644,34 @@ function draw(dt){
   const ents = [], T = R.T, L = R.ev.leg;
   let focus = null;
   for (const tm of R.teams) {
-    let cur = 0; while (cur < 3 && T >= tm.H[cur + 1]) cur++;
-    for (let i = 0; i < 4; i++) {
+    const A = tm.legs.length - 1, solo = !!R.ev.solo;              // a one-man race has no baton
+    let cur = 0; while (cur < A && T >= tm.H[cur + 1]) cur++;
+    for (let i = 0; i <= A; i++) {
       const s = runnerAt(tm, i, T);
       let alpha = 1, o;
       if (s.st === 'wait') {
         if (!(i === cur + 1 || L === 100)) continue;
         if (L !== 100) alpha = clamp((T - (tm.H[i - 1] ?? Infinity)) / R.speed / .5, 0, 1);       // he walks out when the leg before his starts
         o = { pose:i === cur + 1 && i * L - batonAt(tm, T) < 45 ? 'ready' : 'stand' };
-      } else if (s.st === 'blocks') o = { pose:R.real < R.setAt ? 'marks' : 'set', baton:true };
+      } else if (s.st === 'blocks') o = { pose:R.real < R.setAt ? 'marks' : 'set', baton:!solo };
       else if (s.st === 'done') {
-        if (L !== 100 && i < 3) { alpha = clamp(1.6 - s.since, 0, 1); if (alpha <= 0) continue; }   // off the track before the others come round again
-        o = { pose:'stand', baton:i === 3 };
+        if (L !== 100 && i < A) { alpha = clamp(1.6 - s.since, 0, 1); if (alpha <= 0) continue; }   // off the track before the others come round again
+        o = { pose:'stand', baton:i === A && !solo };
       } else {
         // his legs are tied to the ground he covers: STEPS_400 steps a lap (90: user, down from 180 then 108), so 3.7 m a cycle step and the feet
         // don't slide. Sped up past about 2x that would blur, so the cycle tops out at 5 a second.
         const moved = tm.lx[i] === null ? 0 : Math.max(0, s.m - tm.lx[i]);
         tm.ph[i] = (tm.ph[i] + Math.min(moved * STEPS_400 / 800, dt * 2.5)) % 1;
         o = { f:Math.floor(tm.ph[i] * 8) % 8, arm:'pump', lean:3 };
-        if (s.st === 'carry') { o.baton = true; o.lean = i === 0 ? (s.m < 6 ? 5 : s.m < 16 ? 4 : 3) : 3; if (i < 3 && s.left < 5) o.arm = 'fwd'; }
+        if (s.st === 'carry') { o.baton = !solo; o.lean = i === 0 ? (s.m < 6 ? 5 : s.m < 16 ? 4 : 3) : 3; if (i < A && s.left < 5) o.arm = 'fwd'; }
         else if (s.st === 'go') { o.lean = s.s < .55 ? 4 : 3; if (s.s > .62) o.arm = 'back'; }
-        else { o.lean = s.s < .35 ? 2 : s.s < .75 ? 1 : 0; o.baton = i === 3; if (s.hands) { o.arm = 'up'; o.lean = 1; } }
+        else { o.lean = s.s < .35 ? 2 : s.s < .75 ? 1 : 0; o.baton = i === A && !solo; if (s.hands) { o.arm = 'up'; o.lean = 1; } }
       }
       tm.lx[i] = s.m;
       const p = place(tm, i, s.m);
-      const e = { x:p.x, y:p.y, face:p.dx >= 0 ? 1 : -1, spr:figure(tm.runners[i], tm.U, o), alpha, mark:tm.user && !!o.baton };
+      const e = { x:p.x, y:p.y, face:p.dx >= 0 ? 1 : -1, spr:figure(tm.runners[i], tm.U, o), alpha, mark:tm.user && (!!o.baton || (solo && s.st !== 'done')) };
       ents.push(e);
-      if (tm.user && (i === cur) && (s.st === 'carry' || s.st === 'blocks' || i === 3)) focus = e;
+      if (tm.user && (i === cur) && (s.st === 'carry' || s.st === 'blocks' || i === A)) focus = e;
     }
   }
   if (focus) { const want = clamp(focus.x - CW / 2, 0, WORLD_W - CW), wantY = clamp(focus.y - CH * .62, 0, WORLD_H - CH), k = Math.min(1, dt * 7);
